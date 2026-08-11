@@ -2,8 +2,8 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
-#include "include/onnx.proto3.pb.h"
-#include "include/Tensor.h"
+#include "onnx.proto3.pb.h"
+#include "Tensor.h"
 #include "include.h"
 
 std::unordered_map<std::string, Tensor> weight;// to store name, data and shape of weights, biases and inputs/outputs
@@ -36,7 +36,7 @@ void loadinitializer(const onnx::GraphProto& graph){
 
 
 }
-
+/*goes through each node in the Graphproto annd takes it op_type, input/output names and their attribute data*/
 std::vector<Node> graph(const onnx::GraphProto& graph){
     std::vector<Node> parse;
 
@@ -61,4 +61,37 @@ std::vector<Node> graph(const onnx::GraphProto& graph){
         parse.push_back(current_node);
     }
     return parse;
+}
+
+
+int main(){
+    onnx::ModelProto model;
+    std::ifstream input("model.onnx", std::ios::binary);
+    if(!input.is_open()){
+        std::cerr<<"Could not load file!!"<<std::endl;
+        return 1;
+    }
+    model.ParseFromIstream(&input);
+    const onnx::GraphProto& graphproto = model.graph();
+
+    loadinitializer(graphproto);
+
+    std::vector<Node> execution = graph(graphproto);
+
+    for (size_t i = 0; i < execution.size(); ++i) {
+        const Node& n = execution[i];
+        std::cout << "Node #" << i << " | Op: " << n.op_type << "\n";
+        
+        std::cout << "  Inputs : ";
+        for (const auto& in : n.input_names) std::cout << in << " ";
+        std::cout << "\n";
+
+        std::cout << "  Outputs: ";
+        for (const auto& out : n.output_names) std::cout << out << " ";
+        std::cout << "\n\n";
+    }
+
+
+
+    return 0;
 }
