@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include "include/onnx.proto3.pb.h"
 #include "include/Tensor.h"
+#include "include.h"
 
 std::unordered_map<std::string, Tensor> weight;// to store name, data and shape of weights, biases and inputs/outputs
 
@@ -32,4 +33,32 @@ void loadinitializer(const onnx::GraphProto& graph){
         for(auto d : my_tensor.shape) std::cout << d << " ";
         std::cout << "]\n";
     }
+
+
+}
+
+std::vector<Node> graph(const onnx::GraphProto& graph){
+    std::vector<Node> parse;
+
+    for (int i=0; i<graph.node_size(); ++i){
+        const onnx::NodeProto& node = graph.node(i);
+        Node current_node;
+        current_node.op_type = node.op_type();
+        for (int j=0; j<node.input_size(); ++j){
+            current_node.input_names.push_back(node.input(j));
+        }
+        for (int j=0; j<node.output_size(); ++j){
+            current_node.output_names.push_back(node.output(j));
+        }
+        for (int j=0; j<node.attribute_size(); ++j){
+            const onnx::AttributeProto& attr = node.attribute(j);
+            if(attr.name() == "strides" || attr.name() == "pads" || attr.name() == "kernel_shape"){
+               for(int k=0; k<attr.ints_size(); ++k){
+                current_node.int_attributes[attr.name()].push_back(attr.ints(k));
+               } 
+            }
+        }  
+        parse.push_back(current_node);
+    }
+    return parse;
 }
