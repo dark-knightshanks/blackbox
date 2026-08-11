@@ -3,8 +3,9 @@
 #include <string>
 #include <unordered_map>
 #include "onnx.proto3.pb.h"
-#include "Tensor.h"
+#include "tensor.h"
 #include "include.h"
+#include "ops.h"
 
 std::unordered_map<std::string, Tensor> weight;// to store name, data and shape of weights, biases and inputs/outputs
 
@@ -73,11 +74,9 @@ int main(){
     }
     model.ParseFromIstream(&input);
     const onnx::GraphProto& graphproto = model.graph();
-
+    /*
     loadinitializer(graphproto);
-
     std::vector<Node> execution = graph(graphproto);
-
     for (size_t i = 0; i < execution.size(); ++i) {
         const Node& n = execution[i];
         std::cout << "Node #" << i << " | Op: " << n.op_type << "\n";
@@ -89,7 +88,7 @@ int main(){
         std::cout << "  Outputs: ";
         for (const auto& out : n.output_names) std::cout << out << " ";
         std::cout << "\n\n";
-    }
+    }*/
 
 
 
