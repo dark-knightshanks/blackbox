@@ -4,11 +4,13 @@
 # Ignore the compiled executable outputs and object files
 my_runtime
 a.out
-*.o
-*.obj
+**/*.o
+**/*.obj
+onnx_engine
 
 # Ignore large binary neural network files
 *.onnx
+*.onnx.data
 
 # Ignore hidden system files
 .DS_Store

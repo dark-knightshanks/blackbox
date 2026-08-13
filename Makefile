@@ -1,28 +1,26 @@
 CXX = g++
-CXXFLAGS = -Wall -std=c++17 -Iinclude
+CXXFLAGS = -std=c++17 -Wall -Iinclude -I.
 LDFLAGS = -lprotobuf
 
-SRC_DIR = src
-BIN_DIR = bin
-TARGET = $(BIN_DIR)/onnx_engine
+# Gather all .cpp files and include the generated protobuf .cc file
+SRCS = $(wildcard src/*.cpp) onnx.proto3.pb.cc
+OBJS = $(patsubst %.cpp, bin/%.o, $(patsubst %.cc, bin/%.o, $(notdir $(SRCS))))
 
-# Gather all source files and map them to object files inside bin/
-SRCS = $(wildcard $(SRC_DIR)/*.cpp)
-OBJS = $(patsubst $(SRC_DIR)/%.cpp,$(BIN_DIR)/%.o,$(SRCS))
+TARGET = bin/onnx_engine
 
 all: $(TARGET)
 
-# Link all object files into a single binary
-$(TARGET): $(OBJS)
-	@mkdir -p $(BIN_DIR)
-	$(CXX) $(OBJS) $(LDFLAGS) -o $@
-
-# Compile each .cpp file into a .o object file
-$(BIN_DIR)/%.o: $(SRC_DIR)/%.cpp
-	@mkdir -p $(BIN_DIR)
+bin/%.o: src/%.cpp
+	@mkdir -p bin
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-clean:
-	rm -rf $(BIN_DIR)
+# Rule to compile the generated protobuf .cc file
+bin/onnx.proto3.pb.o: src/onnx.proto3.pb.cc
+	@mkdir -p bin
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-.PHONY: all clean
+$(TARGET): $(OBJS)
+	$(CXX) $(OBJS) $(LDFLAGS) -o $@
+
+clean:
+	rm -rf bin
