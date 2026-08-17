@@ -4,15 +4,14 @@
 #include <cstring>
 #include <stdexcept>
 #include <vector>
+#include <chrono>
 #include <unordered_map>
 #include "onnx.proto3.pb.h"
 #include "tensor.h"
 #include "include.h"
 #include "ops.h"
 
-// to store name, data and shape of weights, biases and inputs/outputs
 std::unordered_map<std::string, Tensor> weight;
-
 /* loads tensor data along with their string name in a map */
 void loadinitializer(const onnx::GraphProto& graph){
     for (int i=0; i<graph.initializer_size(); ++i){
@@ -34,7 +33,6 @@ void loadinitializer(const onnx::GraphProto& graph){
                 tensor_onnx.raw_data().size()
             );
         }
-
         // 2. External data
         else if (tensor_onnx.data_location() == onnx::TensorProto::EXTERNAL) {
 
@@ -157,6 +155,7 @@ Tensor load_image(const std::string& filepath) {
 
 /*goes through each node and calls respective operation function*/
 Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image){
+    auto start = std::chrono::high_resolution_clock::now();
     std::unordered_map<std::string, Tensor> inputs = weight;
 
     for (int i = 0; i < graph.input_size(); ++i) {
@@ -251,6 +250,11 @@ Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image){
         }
     }
     std::string final_output_name = graph.output(0).name();
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout <<"Duration: "<<duration << " us\n";
+
     return inputs[final_output_name];
 }
 

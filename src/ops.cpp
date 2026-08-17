@@ -2,15 +2,21 @@
 #include <cmath>
 #include <algorithm>
 #include "ops.h"
+#include <chrono>
 
 
 Tensor run_relu(const Tensor& input){
+    auto start = std::chrono::high_resolution_clock::now();
     Tensor output;
     output.shape = input.shape;
     output.data.resize(input.size());
     for(size_t i = 0; i<input.size();++i){
         output.data[i]=std::max(0.0f, input.data[i]);
     }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout<<"Duration: "<< duration << " us\n";
     return output;
 }
 
@@ -49,6 +55,7 @@ static std::vector<int64_t> parse_target_shape(const Tensor& shape) {
 }
 
 Tensor run_reshape(const Tensor& input, const Tensor& shape) {
+    auto start = std::chrono::high_resolution_clock::now();
     Tensor output;
     output.data = input.data; // Directly copies the raw data
 
@@ -79,11 +86,16 @@ Tensor run_reshape(const Tensor& input, const Tensor& shape) {
     if (minus_one_index != -1) {
         output.shape[minus_one_index] = total_elements / known_product;
     }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start);
+    std::cout<<"Duration :"<<duration.count()<<" us\n";
 
     return output;
 }
 
 Tensor run_gemm(const Tensor& input, const Tensor& weights, const Tensor& bias, int transB) {
+    
+    auto start = std::chrono::high_resolution_clock::now();
     if (input.shape.empty() || weights.shape.size() < 2) {
         throw std::runtime_error("run_gemm: input or weight tensor has invalid shape!");
     }
@@ -129,13 +141,17 @@ int M = (K > 0) ? static_cast<int>(input.data.size() / K) : 1;
         }
     }
 
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout<<"Duration: "<< duration << " us\n";
+
     return output;
 }
 
 Tensor run_maxpool2D(const Tensor& input,const std::vector<int64_t>& kernel, 
                     const std::vector<int64_t>& strides,
                     const std::vector<int64_t>& pads){
-
+    auto start = std::chrono::high_resolution_clock::now();
     if (input.shape.size() < 4) {
         throw std::runtime_error("run_maxpool2D: input tensor must be 4D!");
     }
@@ -186,6 +202,9 @@ Tensor run_maxpool2D(const Tensor& input,const std::vector<int64_t>& kernel,
             }
         }
     }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout<<"Duration: "<< duration << " us\n";
     return output;
 }
 
@@ -193,6 +212,7 @@ Tensor run_conv2D(const Tensor& input, const Tensor& weights,
                     const Tensor& bias, 
                     const std::vector<int64_t>& strides,
                     const std::vector<int64_t>& pads){
+    auto start = std::chrono::high_resolution_clock::now();
 if (input.shape.size() < 4) {
         throw std::runtime_error("run_conv2D: input tensor is not 4D! Actual size: " + std::to_string(input.shape.size()));
     }
@@ -261,5 +281,9 @@ if (input.shape.size() < 4) {
             }
         }
     }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout<<"Duration: "<< duration << " us\n";
+
     return output;
 }
