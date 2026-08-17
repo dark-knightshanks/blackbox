@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Iinclude -I.
+CXXFLAGS = -std=c++17 -Wall -Iinclude -I. -O3 -march=native
 LDFLAGS = -lprotobuf
 
 # Gather all .cpp files and include the generated protobuf .cc file
@@ -15,7 +15,7 @@ bin/%.o: src/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Rule to compile the generated protobuf .cc file
-bin/onnx.proto3.pb.o: src/onnx.proto3.pb.cc
+bin/onnx.proto3.pb.o: include/onnx.proto3.pb.cc
 	@mkdir -p bin
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 

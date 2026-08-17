@@ -4,6 +4,7 @@
 # Ignore the compiled executable outputs and object files
 my_runtime
 a.out
+bin
 **/*.o
 **/*.obj
 onnx_engine
