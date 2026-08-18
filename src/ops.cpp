@@ -8,10 +8,12 @@
 Tensor run_relu(const Tensor& input){
     auto start = std::chrono::high_resolution_clock::now();
     Tensor output;
+    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
     output.shape = input.shape;
-    output.data.resize(input.size());
+    output.data.resize(input.byte_size());
+    float* out_ptr = reinterpret_cast<float*>(output.data.data());
     for(size_t i = 0; i<input.size();++i){
-        output.data[i]=std::max(0.0f, input.data[i]);
+        out_ptr[i]=std::max(0.0f, in_ptr[i]);
     }
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -20,13 +22,14 @@ Tensor run_relu(const Tensor& input){
     return output;
 }
 
-int argmax(const Tensor& ouput){
+int argmax(const Tensor& output){
     int max_idx = 0;
-    float max_value = ouput.data[0];
+    const float* out_ptr = reinterpret_cast<const float*>(output.data.data());
+    float max_value = out_ptr[0];
 
-    for(size_t i=0; i<ouput.data.size(); ++i){
-        if(ouput.data[i]>max_value){
-            max_value = ouput.data[i];
+    for(size_t i=0; i<output.size(); ++i){
+        if(out_ptr[i]>max_value){
+            max_value = out_ptr[i];
             max_idx = static_cast<int>(i);
         }
     }
@@ -41,13 +44,13 @@ static std::vector<int64_t> parse_target_shape(const Tensor& shape) {
     if (expected_dims == 0) expected_dims = shape.data.size();
 
     // Check if data is stored as raw 64-bit integers
-    if (shape.data.size() == expected_dims * 2) {
+    if (shape.data.size() == expected_dims * sizeof(int64_t)) {
         const int64_t* ptr = reinterpret_cast<const int64_t*>(shape.data.data());
         for (size_t i = 0; i < expected_dims; ++i) {
             target_dims.push_back(ptr[i]);
         }
     } else {
-        for (size_t i = 0; i < shape.data.size(); ++i) {
+        for (size_t i = 0; i < expected_dims; ++i) {
             target_dims.push_back(static_cast<int64_t>(shape.data[i]));
         }
     }
@@ -99,7 +102,7 @@ Tensor run_gemm(const Tensor& input, const Tensor& weights, const Tensor& bias, 
     if (input.shape.empty() || weights.shape.size() < 2) {
         throw std::runtime_error("run_gemm: input or weight tensor has invalid shape!");
     }
-    
+
     Tensor output;
     int K, N;
    if (transB == 1) {
@@ -111,12 +114,19 @@ Tensor run_gemm(const Tensor& input, const Tensor& weights, const Tensor& bias, 
     }
 
     // Safely calculate batch size M based on total input floats vs K
-int M = (K > 0) ? static_cast<int>(input.data.size() / K) : 1;
+int M = (K > 0) ? static_cast<int>(input.size() / K) : 1;
     if (M <= 0) M = 1;
 
     output.shape = {M, N};
-    output.data.assign(M * N, 0.0f);
-
+    output.data.resize(output.byte_size());
+    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
+    const float* weight_ptr = reinterpret_cast<const float*>(weights.data.data());
+    
+    const float* bias_ptr = nullptr;
+    if (!bias.data.empty()) {
+        bias_ptr = reinterpret_cast<const float*>(bias.data.data());
+    }
+    float* out_ptr = reinterpret_cast<float*>(output.data.data());
     for (int i = 0; i < M; ++i) {
         for (int j = 0; j < N; ++j) {
             float sum = 0.0f;
@@ -124,19 +134,19 @@ int M = (K > 0) ? static_cast<int>(input.data.size() / K) : 1;
                 int i1 = (i * K) + k;
                 int i2 = (transB == 1) ? (j * K + k) : (k * N + j);
 
-                float in_val = (i1 >= 0 && i1 < static_cast<int>(input.data.size())) ? input.data[i1] : 0.0f;
-                float w_val = (i2 >= 0 && i2 < static_cast<int>(weights.data.size())) ? weights.data[i2] : 0.0f;
+                float in_val = (i1 >= 0 && i1 < static_cast<int>(input.size())) ? in_ptr[i1] : 0.0f;
+                float w_val = (i2 >= 0 && i2 < static_cast<int>(weights.size())) ? weight_ptr[i2] : 0.0f;
 
                 sum += (in_val * w_val);    
             }
 
             // Safe bias addition
-            if (!bias.data.empty() && j >= 0 && j < static_cast<int>(bias.data.size())) {
-                sum += bias.data[j];
+            if (!bias.data.empty() && j >= 0 && j < static_cast<int>(bias.size())) {
+                sum += bias_ptr[j];
             }
             int out_index = (i * N) + j;
-            if (out_index >= 0 && out_index < static_cast<int>(output.data.size())) {
-                output.data[out_index] = sum;
+            if (out_index >= 0 && out_index < static_cast<int>(output.size())) {
+                out_ptr[out_index] = sum;
             }
         }
     }
@@ -172,7 +182,9 @@ Tensor run_maxpool2D(const Tensor& input,const std::vector<int64_t>& kernel,
     int64_t H_out = (H + 2 * Ph - Kh) / Sh + 1;
     int64_t W_out = (W + 2 * Pw - Kw) / Sw + 1;
     output.shape = {N, C, H_out, W_out};
-    output.data.resize(N * C * H_out * W_out);
+    output.data.resize(output.byte_size());
+    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
+    float* out_ptr = reinterpret_cast<float*>(output.data.data());
 
     for(int64_t n=0; n<N; ++n){
         for(int64_t c=0; c<C; ++c){
@@ -187,16 +199,16 @@ Tensor run_maxpool2D(const Tensor& input,const std::vector<int64_t>& kernel,
 
                             if (ih >= 0 && ih < H && iw >= 0 && iw < W) {           
                                 int64_t in_idx = (n * C * H * W) + (c * H * W) + (ih * W) + iw;
-                                if (in_idx < static_cast<int64_t>(input.data.size())) {
-                                    max_val = std::max(max_val, input.data[in_idx]);
+                                if (in_idx < static_cast<int64_t>(input.size())) {
+                                    max_val = std::max(max_val, in_ptr[in_idx]);
                                 }
                             }
                         }
                     }
                     // Save max result to output tensor
                     int64_t out_idx = (n * C * H_out * W_out) + (c * H_out * W_out) + (h * W_out) + w;
-                    if (out_idx < static_cast<int64_t>(output.data.size())) {
-                        output.data[out_idx] = max_val;
+                    if (out_idx < static_cast<int64_t>(output.size())) {
+                        out_ptr[out_idx] = max_val;
                     }
                 }
             }
@@ -247,7 +259,15 @@ if (input.shape.size() < 4) {
     }
 
     output.shape = {N, C_out, H_out, W_out};
-    output.data.resize(N*C_out*H_out*W_out, 0.0f);
+    output.data.resize(output.byte_size());
+    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
+    const float* weight_ptr = reinterpret_cast<const float*>(weights.data.data());
+    
+    const float* bias_ptr = nullptr;
+    if (!bias.data.empty()) {
+        bias_ptr = reinterpret_cast<const float*>(bias.data.data());
+    }
+    float* out_ptr = reinterpret_cast<float*>(output.data.data());
     for(int64_t n=0; n<N; ++n){
         for(int64_t oc=0; oc<C_out; ++oc){
             for(int64_t h=0; h<H_out; ++h){
@@ -263,19 +283,19 @@ if (input.shape.size() < 4) {
                                 if (ih >= 0 && ih < H && iw >= 0 && iw < W) {
                                     int64_t in_idx = (n*C*H*W) + (c*H*W) + (ih*W) + iw;
                                     int64_t w_idx = (oc*C*Kh*Kw) + (c*Kh*Kw) + (kh*Kw) + kw;
-                                    float in_val = (in_idx >= 0 && in_idx < static_cast<int64_t>(input.data.size())) ? input.data[in_idx] : 0.0f;
-                                    float w_val = (w_idx >= 0 && w_idx < static_cast<int64_t>(weights.data.size())) ? weights.data[w_idx] : 0.0f;
+                                    float in_val = (in_idx >= 0 && in_idx < static_cast<int64_t>(input.size())) ? in_ptr[in_idx] : 0.0f;
+                                    float w_val = (w_idx >= 0 && w_idx < static_cast<int64_t>(weights.size())) ? weight_ptr[w_idx] : 0.0f;
                                     sum += (in_val * w_val);
                                 }
                             }
                         }
                     }
-                    if(!bias.data.empty() && oc < static_cast<int64_t>(bias.data.size())){
-                        sum += bias.data[oc];
+                    if(!bias.data.empty() && oc < static_cast<int64_t>(bias.size())){
+                        sum += bias_ptr[oc];
                     }
                     int64_t out_idx = (n * C_out * H_out * W_out) + (oc * H_out * W_out) + (h * W_out) + w;
-                    if (out_idx >= 0 && out_idx < static_cast<int64_t>(output.data.size())) {
-                        output.data[out_idx] = sum;
+                    if (out_idx >= 0 && out_idx < static_cast<int64_t>(output.size())) {
+                        out_ptr[out_idx] = sum;
                     }
                 }
             }

@@ -6,8 +6,8 @@
 #include <vector>
 #include <chrono>
 #include <unordered_map>
-#include "onnx.proto3.pb.h"
 #include "tensor.h"
+#include "onnx.proto3.pb.h"
 #include "include.h"
 #include "ops.h"
 
@@ -24,11 +24,10 @@ void loadinitializer(const onnx::GraphProto& graph){
         }
         // 1. Raw byte buffer
         if (!tensor_onnx.raw_data().empty()) {
-            my_tensor.data.resize(
-                tensor_onnx.raw_data().size() / sizeof(float)
-            );
+            my_tensor.data.resize(tensor_onnx.raw_data().size());
+            float* ptr = reinterpret_cast<float*>(my_tensor.data.data());
             std::memcpy(
-                my_tensor.data.data(),
+                ptr,
                 tensor_onnx.raw_data().data(),
                 tensor_onnx.raw_data().size()
             );
@@ -60,7 +59,7 @@ void loadinitializer(const onnx::GraphProto& graph){
                 );
             }
             file.seekg(offset);
-            my_tensor.data.resize(length / sizeof(float));
+            my_tensor.data.resize(length);
             file.read(
                 reinterpret_cast<char*>(my_tensor.data.data()),
                 length
@@ -73,20 +72,21 @@ void loadinitializer(const onnx::GraphProto& graph){
         }
 
         // 3. Repeated float field
-        else if (tensor_onnx.float_data_size() > 0) {
+        else if (tensor_onnx.float_data_size() > 0) {  
+            my_tensor.data.resize(tensor_onnx.float_data_size()*sizeof(float));
+            float* ptr = reinterpret_cast<float*>(my_tensor.data.data());
             for (int j = 0; j < tensor_onnx.float_data_size(); ++j) {
-                my_tensor.data.push_back(tensor_onnx.float_data(j));
+                ptr[j] = tensor_onnx.float_data(j);
             }
         }
 
         // 4. Repeated int64 field (used for Reshape shapes)
         else if (tensor_onnx.int64_data_size() > 0) {
-            my_tensor.data.resize(
-                tensor_onnx.int64_data_size() * sizeof(int64_t) / sizeof(float)
-            );
+            my_tensor.data.resize(tensor_onnx.int64_data_size() * sizeof(int64_t));
+            int64_t* ptr = reinterpret_cast<int64_t*>(my_tensor.data.data());
 
             std::memcpy(
-                my_tensor.data.data(),
+                ptr,
                 tensor_onnx.int64_data().data(),
                 tensor_onnx.int64_data_size() * sizeof(int64_t)
             );
@@ -132,7 +132,7 @@ Tensor load_image(const std::string& filepath) {
 
     tensor.shape = {1, 1, 28, 28};
     constexpr size_t total_elements = 28 * 28;
-    tensor.data.resize(total_elements);
+    tensor.data.resize(total_elements*sizeof(float));
     std::ifstream file(filepath, std::ios::binary);
 
     if (!file.is_open()) {
@@ -279,6 +279,7 @@ int main(){
             Tensor input_image = load_image(filename);
             Tensor output_digit = run_inference(graphproto, input_image);
             int predicted = argmax(output_digit);
+            float* out_ptr = reinterpret_cast<float*>(output_digit.data.data());
 
             bool is_correct = (predicted == expected);
             if (is_correct) {
@@ -288,7 +289,7 @@ int main(){
             std::cout << "File: " << filename 
                       << " | Expected: " << expected 
                       << " | Predicted: " << predicted 
-                      << " | Confidence Score: " << output_digit.data[predicted]
+                      << " | Confidence Score: " << out_ptr[predicted]
                       << " | Status: " << (is_correct ? "PASS" : "FAIL") 
                       << "\n";
         } 
