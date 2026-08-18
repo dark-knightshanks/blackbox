@@ -6,8 +6,15 @@ Currently runs ONNX CNN models on CPU with FP32 precision. Being developed into 
 
 ## Building
 
-**Prerequisites**: `g++` (C++17), `libprotobuf-dev`
+**Prerequisites**: `g++` (C++17), `libprotobuf-dev`, `protobuf-compiler`
 
+First, if you haven't already, generate the C++ Protobuf bindings from the ONNX proto file:
+```bash
+protoc --cpp_out=. onnx.proto3
+# This will generate onnx.proto3.pb.cc and onnx.proto3.pb.h
+```
+
+Then build the project:
 ```bash
 make            # builds bin/onnx_engine
 ./bin/onnx_engine
