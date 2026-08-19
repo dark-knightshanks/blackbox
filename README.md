@@ -67,7 +67,7 @@ blackbox/
 
 ## Future Work
 
-- [ ] **Tensor redesign** — multi-dtype support (FP32/FP16/INT8), layout enum (NCHW/NHWC), ownership model (owned/view/mmap)
+- [☑️] **Tensor redesign** — multi-dtype support (FP32/FP16/INT8), layout enum (NCHW/NHWC), ownership model (owned/view/mmap)
 - [ ] **More CNN ops** — BatchNorm, AvgPool, GlobalAvgPool, Concat, Add/Mul/Sub/Div with broadcasting, Transpose, Sigmoid, Tanh
 - [ ] **NHWC layout** — rewrite Conv2D/Pool for channels-last memory order, benchmark cache improvement vs NCHW
 - [ ] **INT quantization** — Q8_0 and Q4_0 block quantization, quantized dot product (int8×int8 → int32 accumulate)
