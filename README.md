@@ -21,7 +21,7 @@ make            # builds bin/onnx_engine
 make clean      # removes build artifacts
 ```
 
-Expects `model.onnx` + `model.onnx.data` in project root and test images in `assets/`.
+Expects `model.onnx` + `model.onnx.data` in project root and test images in `tests/assets/`.
 
 ## What's Done
 
@@ -51,16 +51,19 @@ Conv2D dominates — 7 nested loops, no tiling, no SIMD.
 
 ## Project Structure
 
-```
+```text
 blackbox/
-├── include/
-│   ├── tensor.h          # Tensor class (shape + flat FP32 buffer)
+├── include/           
+│   ├── tensor.h          # Tensor class (shape + generic byte buffer)
 │   ├── ops.h             # Op function declarations
-│   └── include.h         # Graph node struct
-├── src/
-│   ├── main.cpp          # Model loading, graph execution, inference loop
+│   ├── engine.h          # Graph node struct
+│   └── onnx.proto3.pb.h  # Generated Protobuf headers
+├── src/               
+│   ├── engine.cpp        # Model loading, graph execution
 │   └── ops.cpp           # Op implementations with per-op profiling
-├── assets/               # MNIST test images (digit_0.bin – digit_9.bin)
+├── tests/             
+│   ├── test_mnist.cpp    # MNIST inference loop and testing app
+│   └── assets/           # MNIST test images (digit_0.bin – digit_9.bin)
 ├── Makefile
 └── README.md
 ```
