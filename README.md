@@ -21,7 +21,7 @@ make            # builds bin/onnx_engine
 make clean      # removes build artifacts
 ```
 
-Expects `model.onnx` + `model.onnx.data` in project root and test images in `assets/`.
+Expects `model.onnx` + `model.onnx.data` in project root and test images in `tests/assets/`.
 
 ## What's Done
 
@@ -51,23 +51,26 @@ Conv2D dominates — 7 nested loops, no tiling, no SIMD.
 
 ## Project Structure
 
-```
+```text
 blackbox/
-├── include/
-│   ├── tensor.h          # Tensor class (shape + flat FP32 buffer)
+├── include/           
+│   ├── tensor.h          # Tensor class (shape + generic byte buffer)
 │   ├── ops.h             # Op function declarations
-│   └── include.h         # Graph node struct
-├── src/
-│   ├── main.cpp          # Model loading, graph execution, inference loop
+│   ├── engine.h          # Graph node struct
+│   └── onnx.proto3.pb.h  # Generated Protobuf headers
+├── src/               
+│   ├── engine.cpp        # Model loading, graph execution
 │   └── ops.cpp           # Op implementations with per-op profiling
-├── assets/               # MNIST test images (digit_0.bin – digit_9.bin)
+├── tests/             
+│   ├── test_mnist.cpp    # MNIST inference loop and testing app
+│   └── assets/           # MNIST test images (digit_0.bin – digit_9.bin)
 ├── Makefile
 └── README.md
 ```
 
 ## Future Work
 
-- [ ] **Tensor redesign** — multi-dtype support (FP32/FP16/INT8), layout enum (NCHW/NHWC), ownership model (owned/view/mmap)
+- [☑️] **Tensor redesign** — multi-dtype support (FP32/FP16/INT8), layout enum (NCHW/NHWC), ownership model (owned/view/mmap)
 - [ ] **More CNN ops** — BatchNorm, AvgPool, GlobalAvgPool, Concat, Add/Mul/Sub/Div with broadcasting, Transpose, Sigmoid, Tanh
 - [ ] **NHWC layout** — rewrite Conv2D/Pool for channels-last memory order, benchmark cache improvement vs NCHW
 - [ ] **INT quantization** — Q8_0 and Q4_0 block quantization, quantized dot product (int8×int8 → int32 accumulate)

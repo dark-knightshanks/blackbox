@@ -2,9 +2,17 @@ CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Iinclude -I. -O3 -march=native
 LDFLAGS = -lprotobuf
 
-# Gather all .cpp files and include the generated protobuf .cc file
-SRCS = $(wildcard src/*.cpp) onnx.proto3.pb.cc
-OBJS = $(patsubst %.cpp, bin/%.o, $(patsubst %.cc, bin/%.o, $(notdir $(SRCS))))
+# Gather all source files
+ENGINE_SRCS = $(wildcard src/*.cpp)
+TEST_SRCS = $(wildcard tests/*.cpp)
+PROTO_SRC = include/onnx.proto3.pb.cc
+
+# Generate object file paths
+ENGINE_OBJS = $(patsubst src/%.cpp, bin/%.o, $(ENGINE_SRCS))
+TEST_OBJS = $(patsubst tests/%.cpp, bin/%.o, $(TEST_SRCS))
+PROTO_OBJ = bin/onnx.proto3.pb.o
+
+OBJS = $(ENGINE_OBJS) $(TEST_OBJS) $(PROTO_OBJ)
 
 TARGET = bin/onnx_engine
 
@@ -14,7 +22,10 @@ bin/%.o: src/%.cpp
 	@mkdir -p bin
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Rule to compile the generated protobuf .cc file
+bin/%.o: tests/%.cpp
+	@mkdir -p bin
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
 bin/onnx.proto3.pb.o: include/onnx.proto3.pb.cc
 	@mkdir -p bin
 	$(CXX) $(CXXFLAGS) -c $< -o $@
