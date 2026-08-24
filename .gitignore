@@ -8,7 +8,8 @@ bin
 **/*.o
 **/*.obj
 onnx_engine
-
+perf.data
+# ignore profile data
 # Ignore large binary neural network files
 *.onnx
 *.onnx.data
