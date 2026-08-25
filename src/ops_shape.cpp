@@ -79,3 +79,44 @@ Tensor run_reshape(const Tensor& input, const Tensor& shape) {
     return output;
 }
 
+Tensor run_transpose(const Tensor& input,  const std::vector<int64_t>& perm){
+    auto start = std::chrono::high_resolution_clock::now();
+    Tensor output;
+    int64_t A,B,C,D,p0,p1,p2,p3;
+    p0 = perm[0];
+    p1 = perm[1]; 
+    p2 = perm[2];
+    p3 = perm[3];
+    A = input.shape[0];
+    B = input.shape[1];
+    C = input.shape[2];
+    D = input.shape[3];
+    output.shape = {input.shape[p0], input.shape[p1], input.shape[p2], input.shape[p3]};
+    output.data.resize(output.byte_size());
+    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
+    float* out_ptr = reinterpret_cast<float*>(output.data.data());
+    for(int i=0; i<A; ++i){
+        for(int j=0; j<B; ++j){
+            for(int k=0; k<C; ++k){
+                for(int l=0; l<D; ++l){
+                    int64_t in_idx = (i*B*C*D) + (j*C*D) + (k*D) + l;
+                    int64_t cord[4] = {i,j,k,l};
+                    int64_t out_i = cord[p0];
+                    int64_t out_j = cord[p1];
+                    int64_t out_k = cord[p2];
+                    int64_t out_l = cord[p3];
+                    int64_t out_dim1 = output.shape[1];
+                    int64_t out_dim2 = output.shape[2];
+                    int64_t out_dim3 = output.shape[3];
+                    int64_t out_idx = (out_i*out_dim1 + out_j)*(out_dim2)*(out_dim3) + (out_k*out_dim3) + out_l;
+                    out_ptr[out_idx] = in_ptr[in_idx];
+                }
+            }
+        }
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start);
+    std::cout<<"Duration :"<<duration.count()<<" us\n";
+
+    return output;
+}
