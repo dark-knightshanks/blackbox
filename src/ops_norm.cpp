@@ -83,3 +83,38 @@ Tensor run_rmsnorm(const Tensor& input, const Tensor& weights){
 
     return output;
 }
+
+Tensor run_batchNorm(const Tensor& input, const Tensor& scale, const Tensor& B, const Tensor& mean, const Tensor& var, float epsilon){
+    auto start = std::chrono::high_resolution_clock::now();
+    Tensor output;
+    output.shape = input.shape;
+    output.data.resize(input.byte_size());
+    int num, channels, height, width;
+    num = input.shape[0];
+    channels = input.shape[1];
+    height = input.shape[2];
+    width = input.shape[3];
+    int64_t dim = height*width;
+    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
+    const float* gamma = reinterpret_cast<const float*>(scale.data.data());
+    const float* beta = reinterpret_cast<const float*>(B.data.data());
+    const float* pmu = reinterpret_cast<const float*>(mean.data.data());
+    const float* sigma_sq = reinterpret_cast<const float*>(var.data.data());
+
+    float* out_ptr = reinterpret_cast<float*>(output.data.data());
+    for(int n = 0 ; n < num ; ++n){
+        for(int c = 0 ; c < channels ; ++c){
+            float inv_std = 1.0f/ std::sqrt(sigma_sq[c] + epsilon);
+            float scale_factor = gamma[c]*inv_std;
+            float shift = beta[c] - (pmu[c]*scale_factor);
+            int64_t offset = (n*channels + c)*dim;
+            for(int64_t hw = 0 ; hw < dim ; ++hw){
+                out_ptr[offset + hw] = (in_ptr[offset+hw]*scale_factor) + shift;
+            }
+        }
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout<<"Duration: "<< duration << " us\n";
+    return output;
+}
