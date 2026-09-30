@@ -8,7 +8,7 @@
 Tensor run_relu(const Tensor& input){
     auto start = std::chrono::high_resolution_clock::now();
     Tensor output;
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
     output.shape = input.shape;
     output.data.resize(input.byte_size());
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
@@ -25,7 +25,7 @@ Tensor run_relu(const Tensor& input){
 Tensor run_GELU(const Tensor& input){
     auto start = std::chrono::high_resolution_clock::now();
     Tensor output;
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
     output.shape = input.shape;
     output.data.resize(input.byte_size());
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
@@ -45,7 +45,7 @@ Tensor run_GELU(const Tensor& input){
 Tensor run_SilU(const Tensor& input){
     auto start = std::chrono::high_resolution_clock::now();
     Tensor output;
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
     output.shape = input.shape;
     output.data.resize(input.byte_size());
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
@@ -67,7 +67,7 @@ Tensor run_softmax(const Tensor& input, int64_t axis){
     Tensor output;
     output.shape = input.shape;
     output.data.resize(input.byte_size());
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
     int rank = input.shape.size();                                     
     int64_t ax = axis;

@@ -31,7 +31,7 @@ Tensor run_maxpool2D(const Tensor& input,const std::vector<int64_t>& kernel,
     int64_t W_out = (W + 2 * Pw - Kw) / Sw + 1;
     output.shape = {N, C, H_out, W_out};
     output.data.resize(output.byte_size());
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
 
     for(int64_t n=0; n<N; ++n){
@@ -108,12 +108,12 @@ if (input.shape.size() < 4) {
 
     output.shape = {N, C_out, H_out, W_out};
     output.data.resize(output.byte_size());
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
-    const float* weight_ptr = reinterpret_cast<const float*>(weights.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
+    const float* weight_ptr = reinterpret_cast<const float*>(weights.raw_data());
     
     const float* bias_ptr = nullptr;
-    if (!bias.data.empty()) {
-        bias_ptr = reinterpret_cast<const float*>(bias.data.data());
+    if (!bias.shape.empty() && bias.raw_data() != nullptr) {
+        bias_ptr = reinterpret_cast<const float*>(bias.raw_data());
     }
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
     for(int64_t n=0; n<N; ++n){
@@ -138,7 +138,7 @@ if (input.shape.size() < 4) {
                             }
                         }
                     }
-                    if(!bias.data.empty() && oc < static_cast<int64_t>(bias.size())){
+                    if(bias_ptr != nullptr && oc < static_cast<int64_t>(bias.size())){
                         sum += bias_ptr[oc];
                     }
                     int64_t out_idx = (n * C_out * H_out * W_out) + (oc * H_out * W_out) + (h * W_out) + w;

@@ -7,7 +7,7 @@
 
 int argmax(const Tensor& output){
     int max_idx = 0;
-    const float* out_ptr = reinterpret_cast<const float*>(output.data.data());
+    const float* out_ptr = reinterpret_cast<const float*>(output.raw_data());
     float max_value = out_ptr[0];
 
     for(size_t i=0; i<output.size(); ++i){
@@ -21,21 +21,18 @@ int argmax(const Tensor& output){
 
 static std::vector<int64_t> parse_target_shape(const Tensor& shape) {
     std::vector<int64_t> target_dims;
-    if (shape.data.empty()) return target_dims;
+    const uint8_t* raw = shape.raw_data();
+    if (raw == nullptr) return target_dims;
 
-    size_t expected_dims = shape.shape.empty() ? (shape.data.size() / 2) : shape.shape[0];
-    if (expected_dims == 0) expected_dims = shape.data.size();
+    size_t count = shape.size();
+    if (count == 0) {
+        count = shape.data.size() / sizeof(int64_t);
+    }
+    if (count == 0) return target_dims;
 
-    // Check if data is stored as raw 64-bit integers
-    if (shape.data.size() == expected_dims * sizeof(int64_t)) {
-        const int64_t* ptr = reinterpret_cast<const int64_t*>(shape.data.data());
-        for (size_t i = 0; i < expected_dims; ++i) {
-            target_dims.push_back(ptr[i]);
-        }
-    } else {
-        for (size_t i = 0; i < expected_dims; ++i) {
-            target_dims.push_back(static_cast<int64_t>(shape.data[i]));
-        }
+    const int64_t* ptr = reinterpret_cast<const int64_t*>(raw);
+    for (size_t i = 0; i < count; ++i) {
+        target_dims.push_back(ptr[i]);
     }
     return target_dims;
 }
@@ -43,7 +40,10 @@ static std::vector<int64_t> parse_target_shape(const Tensor& shape) {
 Tensor run_reshape(const Tensor& input, const Tensor& shape) {
     auto start = std::chrono::high_resolution_clock::now();
     Tensor output;
-    output.data = input.data; // Directly copies the raw data
+    output.external_ptr = input.external_ptr;
+    if (output.external_ptr == nullptr) {
+        output.data = input.data; // Directly copies the raw data
+    }
 
     std::vector<int64_t> target_dims = parse_target_shape(shape);
     int64_t total_elements = input.size();
@@ -93,7 +93,7 @@ Tensor run_transpose(const Tensor& input,  const std::vector<int64_t>& perm){
     D = input.shape[3];
     output.shape = {input.shape[p0], input.shape[p1], input.shape[p2], input.shape[p3]};
     output.data.resize(output.byte_size());
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
     for(int i=0; i<A; ++i){
         for(int j=0; j<B; ++j){

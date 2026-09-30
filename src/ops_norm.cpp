@@ -13,11 +13,11 @@ Tensor run_layernorm(Tensor& input, const Tensor& weights, const Tensor& bias){
     batch = input.shape[0];
     length = input.shape[1];// patches for ViT, tokens for LLM's
     dims = input.shape[2];
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
-    const float* weight_ptr = reinterpret_cast<const float*>(weights.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
+    const float* weight_ptr = reinterpret_cast<const float*>(weights.raw_data());
     const float* bias_ptr = nullptr;
-    if (!bias.data.empty()) {
-        bias_ptr = reinterpret_cast<const float*>(bias.data.data());
+    if (!bias.shape.empty() && bias.raw_data() != nullptr) {
+        bias_ptr = reinterpret_cast<const float*>(bias.raw_data());
     }
     output.shape = input.shape;
     output.data.resize(input.byte_size());
@@ -56,8 +56,8 @@ Tensor run_rmsnorm(const Tensor& input, const Tensor& weights){
     batch = input.shape[0];
     length = input.shape[1];// patches for ViT, tokens for LLM's
     dims = input.shape[2];
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
-    const float* weight_ptr = reinterpret_cast<const float*>(weights.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
+    const float* weight_ptr = reinterpret_cast<const float*>(weights.raw_data());
     output.shape = input.shape;
     output.data.resize(input.byte_size());
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
