@@ -28,12 +28,12 @@ Tensor run_gemm(const Tensor& input, const Tensor& weights, const Tensor& bias, 
 
     output.shape = {M, N};
     output.data.resize(output.byte_size());
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
-    const float* weight_ptr = reinterpret_cast<const float*>(weights.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
+    const float* weight_ptr = reinterpret_cast<const float*>(weights.raw_data());
     
     const float* bias_ptr = nullptr;
-    if (!bias.data.empty()) {
-        bias_ptr = reinterpret_cast<const float*>(bias.data.data());
+    if (!bias.shape.empty() && bias.raw_data() != nullptr) {
+        bias_ptr = reinterpret_cast<const float*>(bias.raw_data());
     }
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
     for (int i = 0; i < M; ++i) {
@@ -50,7 +50,7 @@ Tensor run_gemm(const Tensor& input, const Tensor& weights, const Tensor& bias, 
             }
 
             // Safe bias addition
-            if (!bias.data.empty() && j >= 0 && j < static_cast<int>(bias.size())) {
+            if (bias_ptr != nullptr && j >= 0 && j < static_cast<int>(bias.size())) {
                 sum += bias_ptr[j];
             }
             int out_index = (i * N) + j;
@@ -62,7 +62,7 @@ Tensor run_gemm(const Tensor& input, const Tensor& weights, const Tensor& bias, 
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    std::cout<<"Duration: "<< duration << " us\n";
+    std::cout << "Duration: " << duration << " us\n";
 
     return output;
 }
@@ -82,8 +82,8 @@ Tensor run_matmul(const Tensor& A, const Tensor& B){
 
     output.shape = {batch, heads, M, N};
     output.data.resize(output.byte_size());
-    const float* A_ptr = reinterpret_cast<const float*>(A.data.data());
-    const float* B_ptr = reinterpret_cast<const float*>(B.data.data());
+    const float* A_ptr = reinterpret_cast<const float*>(A.raw_data());
+    const float* B_ptr = reinterpret_cast<const float*>(B.raw_data());
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
                                           
     for(int64_t b=0; b<batch; ++b){
