@@ -120,3 +120,23 @@ Tensor run_transpose(const Tensor& input,  const std::vector<int64_t>& perm){
 
     return output;
 }
+
+Tensor run_add(const Tensor& a, const Tensor& b){
+    auto start = std::chrono::high_resolution_clock::now();
+    const Tensor& big = (a.size() >= b.size()) ? a : b;
+    const Tensor& small = (a.size() >= b.size()) ? b : a;
+    Tensor output;
+    output.shape = big.shape;
+    output.data.resize(big.byte_size());
+    const float* big_ptr = reinterpret_cast<const float*>(big.data.data());
+    const float* small_ptr = reinterpret_cast<const float*>(small.data.data());
+    float* out_ptr = reinterpret_cast<float *>(output.data.data());
+    for(size_t i = 0 ; i < big.size() ; ++i){
+        out_ptr[i] = big_ptr[i] + small_ptr[i%small.size()];
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start);
+    std::cout<<"Duration :"<<duration.count()<<" us\n";
+    return output;
+
+}
