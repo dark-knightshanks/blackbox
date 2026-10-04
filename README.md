@@ -26,8 +26,13 @@ Expects `model.onnx` + `model.onnx.data` in project root and test images in `tes
 ## What's Done
 
 - **Model loading**: ONNX format via protobuf (raw data, external data, float/int64 fields)
+<<<<<<< HEAD
 <<<<<<< Updated upstream
 - **Graph execution**: Sequential node dispatch with runtime tensor registry
+=======
+- **Graph execution**: Dynamic sequential node dispatch with runtime tensor registry
+- **Tensor architecture**: Type-agnostic byte bucket (`std::vector<uint8_t>`) with `Dtype` enum for multi-type support
+>>>>>>> origin/main
 - **Operators**: Conv2D, ReLU, MaxPool2D, Reshape, Gemm (with transB support)
 =======
 - **Zero-copy memory mapping**: POSIX `mmap()` for ONNX external weights with buffer caching (`get_mmap_buffer`) for instant model loading with 0 bytes RAM duplication
@@ -59,24 +64,30 @@ Build: `g++ -O3 -march=native`
 | Gemm `[10,1568]` | ~20 µs | <1% |
 | **Total inference** | **~6,700 µs** | |
 
-Conv2D dominates — 7 nested loops, no tiling, no SIMD.
+Conv2D dominates — 7 nested loops, no tiling, no SIMD. Engine is fully compute-bound with 5.23 IPC, 0.02% L1 cache miss rate, and 0.03% branch misprediction.
 
 ## Project Structure
 
 ```text
 blackbox/
+<<<<<<< HEAD
 <<<<<<< Updated upstream
 ├── include/           
 │   ├── tensor.h          # Tensor class (shape + generic byte buffer)
+=======
+├── include/
+│   ├── tensor.h          # Tensor class (shape + generic byte buffer + Dtype enum)
+>>>>>>> origin/main
 │   ├── ops.h             # Op function declarations
-│   ├── engine.h          # Graph node struct
+│   ├── engine.h          # Graph node struct and engine declarations
 │   └── onnx.proto3.pb.h  # Generated Protobuf headers
-├── src/               
-│   ├── engine.cpp        # Model loading, graph execution
-│   └── ops.cpp           # Op implementations with per-op profiling
-├── tests/             
-│   ├── test_mnist.cpp    # MNIST inference loop and testing app
+├── src/
+│   ├── engine.cpp        # ONNX model loading, graph parsing, inference dispatch
+│   └── ops.cpp           # Op implementations (Conv2D, Gemm, ReLU, MaxPool, Reshape)
+├── tests/
+│   ├── test_mnist.cpp    # MNIST end-to-end inference and validation
 │   └── assets/           # MNIST test images (digit_0.bin – digit_9.bin)
+<<<<<<< HEAD
 =======
 ├── include/
 │   ├── tensor.h             # Tensor container (shape + byte buffer + external_ptr + Dtype enum)
@@ -99,12 +110,21 @@ blackbox/
 │   ├── tensor.md            # Tensor architecture and quantization structs
 │   └── tests.md             # Testing application documentation
 >>>>>>> Stashed changes
+=======
+├── docs/
+│   ├── runtime-engine.md # Runtime engine function documentation
+│   ├── operations.md     # Mathematical operations documentation
+│   ├── tensor.md         # Tensor architecture and quantization structs
+│   └── tests.md          # Testing application documentation
+>>>>>>> origin/main
 ├── Makefile
+├── CONTRIBUTING.md
 └── README.md
 ```
 
 ## Future Work
 
+<<<<<<< HEAD
 <<<<<<< Updated upstream
 - [☑️] **Tensor redesign** — multi-dtype support (FP32/FP16/INT8), layout enum (NCHW/NHWC), ownership model (owned/view/mmap)
 - [ ] **More CNN ops** — BatchNorm, AvgPool, GlobalAvgPool, Concat, Add/Mul/Sub/Div with broadcasting, Transpose, Sigmoid, Tanh
@@ -117,8 +137,13 @@ blackbox/
 - [ ] **INT quantization** — Q8_0 and Q4_0 block quantization, quantized dot product (int8×int8 → int32 accumulate)
 >>>>>>> Stashed changes
 - [ ] **NHWC layout** — rewrite Conv2D/Pool for channels-last memory order, benchmark cache improvement vs NCHW
+=======
+- [x] **Tensor redesign** — generic byte bucket with multi-dtype support (FP32/FP16/INT8) and quantization block structs (Q8_0, Q4_0)
+- [x] **Library restructure** — separated core engine from test applications, established contributing guidelines
+- [ ] **More CNN ops** — BatchNorm, AvgPool, GlobalAvgPool, Concat, Add (with broadcasting), Pad
+- [ ] **Transformer ops** — LayerNorm, RMSNorm, Softmax, GELU/SiLU, Transpose, MatMul (batched)
+- [ ] **Memory-mapped weights** — `mmap` for ONNX external data files for zero-copy, instant model loading
+>>>>>>> origin/main
 - [ ] **INT quantization** — Q8_0 and Q4_0 block quantization, quantized dot product (int8×int8 → int32 accumulate)
-- [ ] **GGUF format** — parser for loading pre-quantized models via mmap, ONNX → GGUF converter
-- [ ] **Backend abstraction** — pluggable backends for CPU (scalar), ARM NEON (SIMD), CUDA (GPU)
-- [ ] **Transformer ops** — LayerNorm, Softmax, GELU, multi-head attention (ViT support)
-
+- [ ] **NHWC layout** — rewrite Conv2D/Pool for channels-last memory order, benchmark cache improvement vs NCHW
+- [ ] **Backend abstraction** — pluggable backends for CPU (scalar), AVX2/NEON (SIMD), CUDA (GPU)

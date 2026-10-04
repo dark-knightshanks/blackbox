@@ -3,160 +3,8 @@
 #include <algorithm>
 #include "ops.h"
 #include <chrono>
+#include <numeric>
 
-
-Tensor run_relu(const Tensor& input){
-    auto start = std::chrono::high_resolution_clock::now();
-    Tensor output;
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
-    output.shape = input.shape;
-    output.data.resize(input.byte_size());
-    float* out_ptr = reinterpret_cast<float*>(output.data.data());
-    for(size_t i = 0; i<input.size();++i){
-        out_ptr[i]=std::max(0.0f, in_ptr[i]);
-    }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    std::cout<<"Duration: "<< duration << " us\n";
-    return output;
-}
-
-int argmax(const Tensor& output){
-    int max_idx = 0;
-    const float* out_ptr = reinterpret_cast<const float*>(output.data.data());
-    float max_value = out_ptr[0];
-
-    for(size_t i=0; i<output.size(); ++i){
-        if(out_ptr[i]>max_value){
-            max_value = out_ptr[i];
-            max_idx = static_cast<int>(i);
-        }
-    }
-    return max_idx;
-}
-
-static std::vector<int64_t> parse_target_shape(const Tensor& shape) {
-    std::vector<int64_t> target_dims;
-    if (shape.data.empty()) return target_dims;
-
-    size_t expected_dims = shape.shape.empty() ? (shape.data.size() / 2) : shape.shape[0];
-    if (expected_dims == 0) expected_dims = shape.data.size();
-
-    // Check if data is stored as raw 64-bit integers
-    if (shape.data.size() == expected_dims * sizeof(int64_t)) {
-        const int64_t* ptr = reinterpret_cast<const int64_t*>(shape.data.data());
-        for (size_t i = 0; i < expected_dims; ++i) {
-            target_dims.push_back(ptr[i]);
-        }
-    } else {
-        for (size_t i = 0; i < expected_dims; ++i) {
-            target_dims.push_back(static_cast<int64_t>(shape.data[i]));
-        }
-    }
-    return target_dims;
-}
-
-Tensor run_reshape(const Tensor& input, const Tensor& shape) {
-    auto start = std::chrono::high_resolution_clock::now();
-    Tensor output;
-    output.data = input.data; // Directly copies the raw data
-
-    std::vector<int64_t> target_dims = parse_target_shape(shape);
-    int64_t total_elements = input.size();
-    int64_t known_product = 1;
-    int minus_one_index = -1;
-
-    for (size_t i = 0; i < target_dims.size(); ++i) {
-        int64_t target_dim = target_dims[i];
-
-        if (target_dim == 0) {
-            int64_t dim = (i < input.shape.size()) ? input.shape[i] : 1;
-            output.shape.push_back(dim);
-            known_product *= dim;
-        } 
-        else if (target_dim == -1) {
-            minus_one_index = static_cast<int>(i);
-            output.shape.push_back(-1);
-        } 
-        else {
-            output.shape.push_back(target_dim);
-            known_product *= target_dim;
-        }
-    }
-
-    // Solve for -1 if it was present
-    if (minus_one_index != -1) {
-        output.shape[minus_one_index] = total_elements / known_product;
-    }
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start);
-    std::cout<<"Duration :"<<duration.count()<<" us\n";
-
-    return output;
-}
-
-Tensor run_gemm(const Tensor& input, const Tensor& weights, const Tensor& bias, int transB) {
-    
-    auto start = std::chrono::high_resolution_clock::now();
-    if (input.shape.empty() || weights.shape.size() < 2) {
-        throw std::runtime_error("run_gemm: input or weight tensor has invalid shape!");
-    }
-
-    Tensor output;
-    int K, N;
-   if (transB == 1) {
-        N = weights.shape[0]; // Out features (10)
-        K = weights.shape[1]; // In features (256)
-    } else {
-        K = weights.shape[0]; // In features
-        N = weights.shape[1]; // Out features
-    }
-
-    // Safely calculate batch size M based on total input floats vs K
-int M = (K > 0) ? static_cast<int>(input.size() / K) : 1;
-    if (M <= 0) M = 1;
-
-    output.shape = {M, N};
-    output.data.resize(output.byte_size());
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
-    const float* weight_ptr = reinterpret_cast<const float*>(weights.data.data());
-    
-    const float* bias_ptr = nullptr;
-    if (!bias.data.empty()) {
-        bias_ptr = reinterpret_cast<const float*>(bias.data.data());
-    }
-    float* out_ptr = reinterpret_cast<float*>(output.data.data());
-    for (int i = 0; i < M; ++i) {
-        for (int j = 0; j < N; ++j) {
-            float sum = 0.0f;
-            for (int k = 0; k < K; ++k) {
-                int i1 = (i * K) + k;
-                int i2 = (transB == 1) ? (j * K + k) : (k * N + j);
-
-                float in_val = (i1 >= 0 && i1 < static_cast<int>(input.size())) ? in_ptr[i1] : 0.0f;
-                float w_val = (i2 >= 0 && i2 < static_cast<int>(weights.size())) ? weight_ptr[i2] : 0.0f;
-
-                sum += (in_val * w_val);    
-            }
-
-            // Safe bias addition
-            if (!bias.data.empty() && j >= 0 && j < static_cast<int>(bias.size())) {
-                sum += bias_ptr[j];
-            }
-            int out_index = (i * N) + j;
-            if (out_index >= 0 && out_index < static_cast<int>(output.size())) {
-                out_ptr[out_index] = sum;
-            }
-        }
-    }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    std::cout<<"Duration: "<< duration << " us\n";
-
-    return output;
-}
 
 Tensor run_maxpool2D(const Tensor& input,const std::vector<int64_t>& kernel, 
                     const std::vector<int64_t>& strides,
@@ -183,7 +31,7 @@ Tensor run_maxpool2D(const Tensor& input,const std::vector<int64_t>& kernel,
     int64_t W_out = (W + 2 * Pw - Kw) / Sw + 1;
     output.shape = {N, C, H_out, W_out};
     output.data.resize(output.byte_size());
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
 
     for(int64_t n=0; n<N; ++n){
@@ -260,12 +108,12 @@ if (input.shape.size() < 4) {
 
     output.shape = {N, C_out, H_out, W_out};
     output.data.resize(output.byte_size());
-    const float* in_ptr = reinterpret_cast<const float*>(input.data.data());
-    const float* weight_ptr = reinterpret_cast<const float*>(weights.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
+    const float* weight_ptr = reinterpret_cast<const float*>(weights.raw_data());
     
     const float* bias_ptr = nullptr;
-    if (!bias.data.empty()) {
-        bias_ptr = reinterpret_cast<const float*>(bias.data.data());
+    if (!bias.shape.empty() && bias.raw_data() != nullptr) {
+        bias_ptr = reinterpret_cast<const float*>(bias.raw_data());
     }
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
     for(int64_t n=0; n<N; ++n){
@@ -290,7 +138,7 @@ if (input.shape.size() < 4) {
                             }
                         }
                     }
-                    if(!bias.data.empty() && oc < static_cast<int64_t>(bias.size())){
+                    if(bias_ptr != nullptr && oc < static_cast<int64_t>(bias.size())){
                         sum += bias_ptr[oc];
                     }
                     int64_t out_idx = (n * C_out * H_out * W_out) + (oc * H_out * W_out) + (h * W_out) + w;

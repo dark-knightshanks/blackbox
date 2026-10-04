@@ -6,6 +6,10 @@
 #include <vector>
 #include <chrono>
 #include <unordered_map>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "tensor.h"
 #include "onnx.proto3.pb.h"
 #include "engine.h"
@@ -13,6 +17,31 @@
 
 std::unordered_map<std::string, Tensor> weight;
 /* loads tensor data along with their string name in a map */
+static std::unordered_map<std::string, const uint8_t*> mmap_cache;
+
+const uint8_t* get_mmap_buffer(const std::string& filepath){
+    if(mmap_cache.find(filepath) != mmap_cache.end()){
+        return mmap_cache[filepath];
+    }
+    int fd = open(filepath.c_str(), O_RDONLY);
+    if(fd < 0){
+        throw std::runtime_error("Could not open external dats file for mmap");
+    }
+    struct stat sb;
+    if(fstat(fd, &sb) <0){
+        close(fd);
+        throw std::runtime_error("fstat failed:");
+    }
+    void* ptr = mmap(NULL, sb.st_size, PROT_READ, MAP_SHARED,fd,0);
+    close(fd);
+    if(ptr == MAP_FAILED){
+        throw std::runtime_error("mmap failed");
+    }
+    const uint8_t* base = static_cast<const uint8_t*>(ptr);
+    mmap_cache[filepath] = base;
+    return base;
+}
+
 void loadinitializer(const onnx::GraphProto& graph){
     for (int i=0; i<graph.initializer_size(); ++i){
         const onnx::TensorProto& tensor_onnx = graph.initializer(i);
@@ -52,23 +81,8 @@ void loadinitializer(const onnx::GraphProto& graph){
                     length = std::stoull(entry.value());
                 }
             }
-            std::ifstream file(location, std::ios::binary);
-            if (!file) {
-                throw std::runtime_error(
-                    "Could not open external data file: " + location
-                );
-            }
-            file.seekg(offset);
-            my_tensor.data.resize(length);
-            file.read(
-                reinterpret_cast<char*>(my_tensor.data.data()),
-                length
-            );
-            if (!file) {
-                throw std::runtime_error(
-                    "Failed to read external data for tensor: " + name
-                );
-            }
+            const uint8_t* base = get_mmap_buffer(location);
+            my_tensor.external_ptr = base + offset;
         }
 
         // 3. Repeated float field

@@ -61,6 +61,7 @@ public:
 Dtype flag = FP32;
 std::vector<int64_t> shape;// shape of the weigths and images
 std::vector<uint8_t> data; //store all the data
+const uint8_t* external_ptr = nullptr;
 size_t size() const { // helps to calculate the total size 
         size_t total = 1;
         for(size_t i = 0; i<shape.size(); i++){
@@ -74,5 +75,11 @@ size_t byte_size()const {
     size_t el_per_block = el/block_size_Dtype(flag);
     return el_per_block*sizeof_block(flag);
     }
+const uint8_t* raw_data() const {
+    if(external_ptr != nullptr){
+        return external_ptr;
+    }
+    return data.data();
+}
 
 };
