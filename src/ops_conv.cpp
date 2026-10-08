@@ -155,3 +155,35 @@ if (input.shape.size() < 4) {
 
     return output;
 }
+
+Tensor run_globalAvgPool(const Tensor& input){
+    auto start = std::chrono::high_resolution_clock::now();
+    Tensor output;
+    int64_t num, channels, height, width;
+    num = input.shape[0];
+    channels = input.shape[1];
+    height = input.shape[2];
+    width = input.shape[3];
+
+    output.shape = {num, channels, 1, 1};
+    output.data.resize(output.byte_size());
+
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
+    float* out_ptr = reinterpret_cast<float*>(output.data.data());
+    float spatialSize = static_cast<float>(height*width);
+
+    for(int64_t n = 0; n < num; ++n){
+        for(int64_t c = 0 ; c < channels ; ++c){
+            float sum = 00.0f;
+            int64_t offset = (n*channels + c)*height*width;
+            for(int64_t hw = 0 ; hw <  height*width ; ++hw){
+                sum += in_ptr[offset + hw];
+            }
+            out_ptr[n*channels + c] = sum/spatialSize;
+        }
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout<<"Duration: "<< duration << " us\n";
+    return output;
+}
