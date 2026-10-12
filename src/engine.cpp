@@ -129,7 +129,7 @@ std::vector<Node> graph(const onnx::GraphProto& graph){
         }
         for (int j=0; j<node.attribute_size(); ++j){
             const onnx::AttributeProto& attr = node.attribute(j);
-            if(attr.name() == "strides" || attr.name() == "pads" || attr.name() == "kernel_shape"){
+            if(attr.ints_size() > 0){
                for(int k=0; k<attr.ints_size(); ++k){
                 current_node.int_attributes[attr.name()].push_back(attr.ints(k));
                } 
@@ -250,9 +250,28 @@ Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image){
             }
             inputs[node.output(0)] = run_batchNorm(in,scale,bias,mean,var,epsilon);
         }
-        else if(op_type == "GlobalAveragePooL"){
+        else if(op_type == "GlobalAveragePool"){
             const Tensor& in = get_tensor(node.input(0));
             inputs[node.output(0)] = run_globalAvgPool(in);
+        }
+        else if(op_type == "Flatten"){
+            const Tensor& in = get_tensor(node.input(0));
+            int64_t axis = 1;
+            for(const auto& attr : node.attribute()){
+                if(attr.name() == "axis"){
+                    axis = attr.i();
+                }
+            }
+            if(axis < 0) axis += in.shape.size();
+
+            int64_t d0 = 1;
+            for(int64_t i = 0; i < axis; ++i) d0 *= in.shape[i];
+            int64_t d1 = 1;
+            for(size_t i = axis; i < in.shape.size(); ++i) d1 *= in.shape[i];
+
+            Tensor out = in;
+            out.shape = {d0, d1};
+            inputs[node.output(0)] = out;
         }
         else if(op_type == "Add"){
             const Tensor& input0 = get_tensor(node.input(0));
@@ -296,6 +315,48 @@ Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image){
                 }
             }
             inputs[node.output(0)] = run_pad(in,pads,constant_value);
+        }
+        else if(op_type == "MatMul"){
+            const Tensor& A = get_tensor(node.input(0));
+            const Tensor& B = get_tensor(node.input(1));
+            inputs[node.output(0)] = run_matmul(A, B);
+        }
+        else if(op_type == "Softmax"){
+            const Tensor& in = get_tensor(node.input(0));
+            int64_t axis = -1;
+            for(const auto& attr : node.attribute()){
+                if(attr.name() == "axis"){
+                    axis = attr.i();
+                }
+            }
+            inputs[node.output(0)] = run_softmax(in, axis);
+        } 
+        else if(op_type == "Transpose"){
+            const Tensor& in = get_tensor(node.input(0));
+            std::vector<int64_t> perm;
+            for(const auto& attr : node.attribute()){
+                if(attr.name() == "perm"){
+                    for(int i = 0; i < attr.ints_size(); ++i){
+                        perm.push_back(attr.ints(i));
+                    }
+                }
+            }
+            inputs[node.output(0)] = run_transpose(in, perm);
+        }
+        else if(op_type == "LayerNormalization"){
+            const Tensor& in = get_tensor(node.input(0));
+            const Tensor& scale = get_tensor(node.input(1));
+            Tensor bias = (node.input_size() > 2 && inputs.find(node.input(2)) != inputs.end())
+                           ? inputs[node.input(2)] : Tensor();
+            inputs[node.output(0)] = run_layernorm(const_cast<Tensor&>(in), scale, bias);
+        }
+        else if(op_type == "Gelu"){
+            const Tensor& in = get_tensor(node.input(0));
+            inputs[node.output(0)] = run_GELU(in);
+        }
+        else if(op_type == "Silu"){
+            const Tensor& in = get_tensor(node.input(0));
+            inputs[node.output(0)] = run_SilU(in);
         }
     }
     std::string final_output_name = graph.output(0).name();
