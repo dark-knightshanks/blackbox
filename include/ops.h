@@ -25,6 +25,11 @@ Tensor run_rmsnorm(const Tensor& input, const Tensor& weights);
 Tensor run_transpose(const Tensor& input, const std::vector<int64_t>& perm);
 Tensor run_softmax(const Tensor& input, int64_t axis = -1);
 Tensor run_matmul(const Tensor& A, const Tensor& B);
+Tensor run_batchNorm(const Tensor& input, const Tensor& scale, const Tensor& B, const Tensor& mean, const Tensor& var, float epsilon);
+Tensor run_globalAvgPool(const Tensor& input);
+Tensor run_add(const Tensor& a, const Tensor& b);
+Tensor run_pad(const Tensor& input, const std::vector<int64_t> &pads, float constant_val = 0.00f);
+Tensor run_concat(const std::vector<Tensor> &inputs, int64_t axis);
 
 #endif
 

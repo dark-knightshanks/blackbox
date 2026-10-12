@@ -236,6 +236,67 @@ Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image){
             }
             inputs[node.output(0)] = run_gemm(in, weights, bias, transB);
         }
+        else if(op_type == "BatchNormalization"){
+            const Tensor& in = get_tensor(node.input(0));
+            const Tensor& scale = get_tensor(node.input(1));
+            const Tensor& bias = get_tensor(node.input(2));
+            const Tensor& mean = get_tensor(node.input(3));
+            const Tensor& var = get_tensor(node.input(4));
+            float epsilon = 1e-5f;
+            for(const auto& attr : node.attribute()){
+                if (attr.name() == "epsilon"){
+                    epsilon = attr.f();
+                }
+            }
+            inputs[node.output(0)] = run_batchNorm(in,scale,bias,mean,var,epsilon);
+        }
+        else if(op_type == "GlobalAveragePooL"){
+            const Tensor& in = get_tensor(node.input(0));
+            inputs[node.output(0)] = run_globalAvgPool(in);
+        }
+        else if(op_type == "Add"){
+            const Tensor& input0 = get_tensor(node.input(0));
+            const Tensor& input1 = get_tensor(node.input(1));
+            inputs[node.output(0)] = run_add(input0,input1);
+        }
+        else if(op_type == "Concat"){
+            std::vector<Tensor> concat_inputs;
+            for(int i = 0; i < node.input_size() ; ++i){
+                concat_inputs.push_back(get_tensor(node.input(i)));
+            }
+            int64_t axis = 1;
+            for(const auto &attr : node.attribute()){
+                if(attr.name() == "axis"){
+                    axis = attr.i();
+                }
+            }
+            inputs[node.output(0)] = run_concat(concat_inputs,axis);
+        }
+        else if(op_type == "Pad"){
+            const Tensor &in = get_tensor(node.input(0));
+            std::vector<int64_t> pads;
+            float constant_value = 0.0f;
+            for(const auto& attr : node.attribute()){
+                if(attr.name() == "pads"){
+                    for(int i = 0; i < attr.ints_size() ; ++i){
+                        pads.push_back(attr.ints(i));
+                    }
+                }
+                else if(attr.name() == "value"){
+                    constant_value = attr.f();
+                }
+            }
+            if(pads.empty() && node.input_size() > 1 && inputs.find(node.input(1)) != inputs.end() ){
+                const Tensor& pads_tensor = inputs[node.input(1)];
+                if(pads_tensor.data.size() == pads_tensor.size() * sizeof(int64_t)){
+                    const int64_t *ptr = reinterpret_cast<const int64_t*>(pads_tensor.raw_data());
+                    for(size_t i = 0 ; i < pads_tensor.size(); ++i){
+                        pads.push_back(ptr[i]);
+                    }
+                }
+            }
+            inputs[node.output(0)] = run_pad(in,pads,constant_value);
+        }
     }
     std::string final_output_name = graph.output(0).name();
 
