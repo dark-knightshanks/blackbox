@@ -11,6 +11,12 @@
 #include "engine.h"
 #include "ops.h"
 
+struct test_cases {
+    std::string filename;
+    int expected_id;
+    std::string label_name;
+};
+
 std::vector<test_cases> test = {
     {"tests/assets/resnet18/dog.bin", 258, "Samoyed"},
     {"tests/assets/resnet18/cat.bin", 285, "Egyptian Cat"}
