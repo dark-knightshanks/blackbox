@@ -10,12 +10,7 @@
 #include "onnx.proto3.pb.h"
 #include "engine.h"
 #include "ops.h"
-
-struct test_cases{
-    std::string filename;
-    int expected_id;
-    std::string label_name;
-};
+#include "test.h"
 
 std::vector<test_cases> test = {
     {"tests/assets/resnet18/dog.bin", 258, "Samoyed"},
