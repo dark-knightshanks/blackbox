@@ -10,7 +10,6 @@
 #include "onnx.proto3.pb.h"
 #include "engine.h"
 #include "ops.h"
-#include "test.h"
 
 std::vector<test_cases> test = {
     {"tests/assets/resnet18/dog.bin", 258, "Samoyed"},
