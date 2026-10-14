@@ -15,6 +15,7 @@ PROTO_OBJ = bin/onnx.proto3.pb.o
 TARGET_MNIST = bin/test_mnist
 TARGET_RESNET = bin/test_resnet18
 TARGET_VIT = bin/test_vit
+TARGET_ARENA = bin/test_arena
 
 all: $(TARGET_MNIST) $(TARGET_RESNET)
 
@@ -38,6 +39,9 @@ $(TARGET_RESNET): $(ENGINE_OBJS) bin/test_resnet18.o $(PROTO_OBJ)
 
 $(TARGET_VIT): $(ENGINE_OBJS) bin/test_vit.o $(PROTO_OBJ)
 	$(CXX) $^ $(LDFLAGS) -o $@
+
+$(TARGET_ARENA): bin/test_arena.o
+	$(CXX) $^ -o $@
 
 clean:
 	rm -rf bin
