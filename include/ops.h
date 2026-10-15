@@ -4,6 +4,19 @@
 #include <cmath>
 #include <tensor.h>
 #include <cstdint>
+#include <cstddef>
+#include <string>
+
+class Operator{
+    public:
+        virtual ~Operator() = default;
+        virtual void forward(uint8_t* arena,
+                             const std::vector<size_t>& input_offset,
+                             const std::vector<const uint8_t*>& weight_ptr,
+                             const std::vector<size_t>& output_offset) = 0;
+
+        virtual const std::string& name() const = 0;                    
+};
 
 constexpr double PI = 3.14159265358979323846;
 Tensor run_relu(const Tensor& input);
