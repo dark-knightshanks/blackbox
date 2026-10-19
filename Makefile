@@ -45,3 +45,10 @@ $(TARGET_ARENA): bin/test_arena.o
 
 clean:
 	rm -rf bin
+
+format:
+	clang-format -i include/*.h src/*.cpp tests/*.cpp
+
+check-format:
+	clang-format --dry-run --Werror include/*.h src/*.cpp tests/*.cpp
+
