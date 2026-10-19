@@ -1,0 +1,26 @@
+---
+# Base style specification
+BasedOnStyle: LLVM
+
+# Indentation rules
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+
+# Column limits
+ColumnLimit: 100
+
+# Access modifier alignment (public:, private:)
+AccessModifierOffset: -4
+
+# Pointer/Reference alignment (e.g., float* ptr instead of float *ptr)
+PointerAlignment: Left
+
+# Bracing style
+BreakBeforeBraces: Attach
+
+# Clean formatting helpers
+SpaceAfterCStyleCast: false
+SpacesBeforeTrailingComments: 2
+SortIncludes: false
+...
