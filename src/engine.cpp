@@ -19,22 +19,22 @@ std::unordered_map<std::string, Tensor> weight;
 /* loads tensor data along with their string name in a map */
 static std::unordered_map<std::string, const uint8_t*> mmap_cache;
 
-const uint8_t* get_mmap_buffer(const std::string& filepath){
-    if(mmap_cache.find(filepath) != mmap_cache.end()){
+const uint8_t* get_mmap_buffer(const std::string& filepath) {
+    if (mmap_cache.find(filepath) != mmap_cache.end()) {
         return mmap_cache[filepath];
     }
     int fd = open(filepath.c_str(), O_RDONLY);
-    if(fd < 0){
+    if (fd < 0) {
         throw std::runtime_error("Could not open external dats file for mmap");
     }
     struct stat sb;
-    if(fstat(fd, &sb) <0){
+    if (fstat(fd, &sb) < 0) {
         close(fd);
         throw std::runtime_error("fstat failed:");
     }
-    void* ptr = mmap(NULL, sb.st_size, PROT_READ, MAP_SHARED,fd,0);
+    void* ptr = mmap(NULL, sb.st_size, PROT_READ, MAP_SHARED, fd, 0);
     close(fd);
-    if(ptr == MAP_FAILED){
+    if (ptr == MAP_FAILED) {
         throw std::runtime_error("mmap failed");
     }
     const uint8_t* base = static_cast<const uint8_t*>(ptr);
@@ -42,24 +42,20 @@ const uint8_t* get_mmap_buffer(const std::string& filepath){
     return base;
 }
 
-void loadinitializer(const onnx::GraphProto& graph){
-    for (int i=0; i<graph.initializer_size(); ++i){
+void loadinitializer(const onnx::GraphProto& graph) {
+    for (int i = 0; i < graph.initializer_size(); ++i) {
         const onnx::TensorProto& tensor_onnx = graph.initializer(i);
         std::string name = tensor_onnx.name();
         Tensor my_tensor;
 
-        for(int j = 0; j<tensor_onnx.dims_size(); ++j){
+        for (int j = 0; j < tensor_onnx.dims_size(); ++j) {
             my_tensor.shape.push_back(tensor_onnx.dims(j));
         }
         // 1. Raw byte buffer
         if (!tensor_onnx.raw_data().empty()) {
             my_tensor.data.resize(tensor_onnx.raw_data().size());
             float* ptr = reinterpret_cast<float*>(my_tensor.data.data());
-            std::memcpy(
-                ptr,
-                tensor_onnx.raw_data().data(),
-                tensor_onnx.raw_data().size()
-            );
+            std::memcpy(ptr, tensor_onnx.raw_data().data(), tensor_onnx.raw_data().size());
         }
         // 2. External data
         else if (tensor_onnx.data_location() == onnx::TensorProto::EXTERNAL) {
@@ -73,11 +69,9 @@ void loadinitializer(const onnx::GraphProto& graph){
 
                 if (entry.key() == "location") {
                     location = entry.value();
-                }
-                else if (entry.key() == "offset") {
+                } else if (entry.key() == "offset") {
                     offset = std::stoull(entry.value());
-                }
-                else if (entry.key() == "length") {
+                } else if (entry.key() == "length") {
                     length = std::stoull(entry.value());
                 }
             }
@@ -86,8 +80,8 @@ void loadinitializer(const onnx::GraphProto& graph){
         }
 
         // 3. Repeated float field
-        else if (tensor_onnx.float_data_size() > 0) {  
-            my_tensor.data.resize(tensor_onnx.float_data_size()*sizeof(float));
+        else if (tensor_onnx.float_data_size() > 0) {
+            my_tensor.data.resize(tensor_onnx.float_data_size() * sizeof(float));
             float* ptr = reinterpret_cast<float*>(my_tensor.data.data());
             for (int j = 0; j < tensor_onnx.float_data_size(); ++j) {
                 ptr[j] = tensor_onnx.float_data(j);
@@ -99,50 +93,48 @@ void loadinitializer(const onnx::GraphProto& graph){
             my_tensor.data.resize(tensor_onnx.int64_data_size() * sizeof(int64_t));
             int64_t* ptr = reinterpret_cast<int64_t*>(my_tensor.data.data());
 
-            std::memcpy(
-                ptr,
-                tensor_onnx.int64_data().data(),
-                tensor_onnx.int64_data_size() * sizeof(int64_t)
-            );
+            std::memcpy(ptr, tensor_onnx.int64_data().data(),
+                        tensor_onnx.int64_data_size() * sizeof(int64_t));
         }
 
         weight[name] = my_tensor;
         std::cout << "Loaded weight: " << name << " with shape [";
-        for(auto d : my_tensor.shape) std::cout << d << " ";
+        for (auto d : my_tensor.shape)
+            std::cout << d << " ";
         std::cout << "]\n";
     }
 }
 
-/*goes through each node in the Graphproto annd takes it op_type, input/output names and their attribute data*/
-std::vector<Node> graph(const onnx::GraphProto& graph){
+/*goes through each node in the Graphproto annd takes it op_type, input/output names and their
+ * attribute data*/
+std::vector<Node> graph(const onnx::GraphProto& graph) {
     std::vector<Node> parse;
 
-    for (int i=0; i<graph.node_size(); ++i){
+    for (int i = 0; i < graph.node_size(); ++i) {
         const onnx::NodeProto& node = graph.node(i);
         Node current_node;
         current_node.op_type = node.op_type();
-        for (int j=0; j<node.input_size(); ++j){
+        for (int j = 0; j < node.input_size(); ++j) {
             current_node.input_names.push_back(node.input(j));
         }
-        for (int j=0; j<node.output_size(); ++j){
+        for (int j = 0; j < node.output_size(); ++j) {
             current_node.output_names.push_back(node.output(j));
         }
-        for (int j=0; j<node.attribute_size(); ++j){
+        for (int j = 0; j < node.attribute_size(); ++j) {
             const onnx::AttributeProto& attr = node.attribute(j);
-            if(attr.ints_size() > 0){
-               for(int k=0; k<attr.ints_size(); ++k){
-                current_node.int_attributes[attr.name()].push_back(attr.ints(k));
-               } 
+            if (attr.ints_size() > 0) {
+                for (int k = 0; k < attr.ints_size(); ++k) {
+                    current_node.int_attributes[attr.name()].push_back(attr.ints(k));
+                }
             }
-        }  
+        }
         parse.push_back(current_node);
     }
     return parse;
 }
 
-
 /*goes through each node and calls respective operation function*/
-Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image){
+Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image) {
     auto start = std::chrono::high_resolution_clock::now();
     std::unordered_map<std::string, Tensor> inputs = weight;
 
@@ -155,35 +147,34 @@ Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image){
     if (graph.node_size() > 0 && graph.node(0).input_size() > 0) {
         inputs[graph.node(0).input(0)] = input_image;
     }
-    auto get_tensor = [&](const std::string& name) -> const Tensor& {   
+    auto get_tensor = [&](const std::string& name) -> const Tensor& {
         auto it = inputs.find(name);
         if (it == inputs.end()) {
             throw std::runtime_error("Missing required tensor in map: '" + name + "'");
         }
         return it->second;
     };
-    for(const auto& node : graph.node()){
+    for (const auto& node : graph.node()) {
         const std::string& op_type = node.op_type();
         std::cout << "Executing Node: " << node.name() << " [" << op_type << "]\n";
 
-        if(op_type == "Conv"){
+        if (op_type == "Conv") {
             const Tensor& in = get_tensor(node.input(0));
             const Tensor& weights = get_tensor(node.input(1));
-            Tensor bias = (node.input_size() > 2 && inputs.find(node.input(2)) != inputs.end()) 
-                           ? inputs[node.input(2)] : Tensor();
+            Tensor bias = (node.input_size() > 2 && inputs.find(node.input(2)) != inputs.end())
+                              ? inputs[node.input(2)]
+                              : Tensor();
             std::vector<int64_t> strides, pads, kernel_shape;
             for (const auto& attr : node.attribute()) {
                 if (attr.name() == "strides") {
                     for (int i = 0; i < attr.ints_size(); ++i) {
                         strides.push_back(attr.ints(i));
                     }
-                } 
-                else if (attr.name() == "pads") {
+                } else if (attr.name() == "pads") {
                     for (int i = 0; i < attr.ints_size(); ++i) {
                         pads.push_back(attr.ints(i));
                     }
-                } 
-                else if (attr.name() == "kernel_shape") {
+                } else if (attr.name() == "kernel_shape") {
                     for (int i = 0; i < attr.ints_size(); ++i) {
                         kernel_shape.push_back(attr.ints(i));
                     }
@@ -191,11 +182,9 @@ Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image){
             }
 
             inputs[node.output(0)] = run_conv2D(in, weights, bias, strides, pads);
-        }
-        else if (op_type == "Relu"){
+        } else if (op_type == "Relu") {
             inputs[node.output(0)] = run_relu(inputs[node.input(0)]);
-        }
-        else if (op_type == "MaxPool"){
+        } else if (op_type == "MaxPool") {
             const Tensor& in = get_tensor(node.input(0));
             std::vector<int64_t> strides, pads, kernel_shape;
             for (const auto& attr : node.attribute()) {
@@ -203,30 +192,27 @@ Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image){
                     for (int i = 0; i < attr.ints_size(); ++i) {
                         strides.push_back(attr.ints(i));
                     }
-                } 
-                else if (attr.name() == "pads") {
+                } else if (attr.name() == "pads") {
                     for (int i = 0; i < attr.ints_size(); ++i) {
                         pads.push_back(attr.ints(i));
                     }
-                } 
-                else if (attr.name() == "kernel_shape") {
+                } else if (attr.name() == "kernel_shape") {
                     for (int i = 0; i < attr.ints_size(); ++i) {
                         kernel_shape.push_back(attr.ints(i));
                     }
                 }
             }
             inputs[node.output(0)] = run_maxpool2D(in, kernel_shape, strides, pads);
-        }
-        else if(op_type == "Reshape"){
+        } else if (op_type == "Reshape") {
             const Tensor& in = get_tensor(node.input(0));
             const Tensor& shape = get_tensor(node.input(1));
             inputs[node.output(0)] = run_reshape(in, shape);
-        }
-        else if(op_type == "Gemm"){
+        } else if (op_type == "Gemm") {
             const Tensor& in = get_tensor(node.input(0));
             const Tensor& weights = get_tensor(node.input(1));
-            Tensor bias = (node.input_size() > 2 && inputs.find(node.input(2)) != inputs.end()) 
-                           ? inputs[node.input(2)] : Tensor();
+            Tensor bias = (node.input_size() > 2 && inputs.find(node.input(2)) != inputs.end())
+                              ? inputs[node.input(2)]
+                              : Tensor();
             // Extract transB attribute from ONNX node (defaults to 0 if not specified)
             int transB = 0;
             for (const auto& attr : node.attribute()) {
@@ -235,126 +221,118 @@ Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image){
                 }
             }
             inputs[node.output(0)] = run_gemm(in, weights, bias, transB);
-        }
-        else if(op_type == "BatchNormalization"){
+        } else if (op_type == "BatchNormalization") {
             const Tensor& in = get_tensor(node.input(0));
             const Tensor& scale = get_tensor(node.input(1));
             const Tensor& bias = get_tensor(node.input(2));
             const Tensor& mean = get_tensor(node.input(3));
             const Tensor& var = get_tensor(node.input(4));
             float epsilon = 1e-5f;
-            for(const auto& attr : node.attribute()){
-                if (attr.name() == "epsilon"){
+            for (const auto& attr : node.attribute()) {
+                if (attr.name() == "epsilon") {
                     epsilon = attr.f();
                 }
             }
-            inputs[node.output(0)] = run_batchNorm(in,scale,bias,mean,var,epsilon);
-        }
-        else if(op_type == "GlobalAveragePool"){
+            inputs[node.output(0)] = run_batchNorm(in, scale, bias, mean, var, epsilon);
+        } else if (op_type == "GlobalAveragePool") {
             const Tensor& in = get_tensor(node.input(0));
             inputs[node.output(0)] = run_globalAvgPool(in);
-        }
-        else if(op_type == "Flatten"){
+        } else if (op_type == "Flatten") {
             const Tensor& in = get_tensor(node.input(0));
             int64_t axis = 1;
-            for(const auto& attr : node.attribute()){
-                if(attr.name() == "axis"){
+            for (const auto& attr : node.attribute()) {
+                if (attr.name() == "axis") {
                     axis = attr.i();
                 }
             }
-            if(axis < 0) axis += in.shape.size();
+            if (axis < 0)
+                axis += in.shape.size();
 
             int64_t d0 = 1;
-            for(int64_t i = 0; i < axis; ++i) d0 *= in.shape[i];
+            for (int64_t i = 0; i < axis; ++i)
+                d0 *= in.shape[i];
             int64_t d1 = 1;
-            for(size_t i = axis; i < in.shape.size(); ++i) d1 *= in.shape[i];
+            for (size_t i = axis; i < in.shape.size(); ++i)
+                d1 *= in.shape[i];
 
             Tensor out = in;
             out.shape = {d0, d1};
             inputs[node.output(0)] = out;
-        }
-        else if(op_type == "Add"){
+        } else if (op_type == "Add") {
             const Tensor& input0 = get_tensor(node.input(0));
             const Tensor& input1 = get_tensor(node.input(1));
-            inputs[node.output(0)] = run_add(input0,input1);
-        }
-        else if(op_type == "Concat"){
+            inputs[node.output(0)] = run_add(input0, input1);
+        } else if (op_type == "Concat") {
             std::vector<Tensor> concat_inputs;
-            for(int i = 0; i < node.input_size() ; ++i){
+            for (int i = 0; i < node.input_size(); ++i) {
                 concat_inputs.push_back(get_tensor(node.input(i)));
             }
             int64_t axis = 1;
-            for(const auto &attr : node.attribute()){
-                if(attr.name() == "axis"){
+            for (const auto& attr : node.attribute()) {
+                if (attr.name() == "axis") {
                     axis = attr.i();
                 }
             }
-            inputs[node.output(0)] = run_concat(concat_inputs,axis);
-        }
-        else if(op_type == "Pad"){
-            const Tensor &in = get_tensor(node.input(0));
+            inputs[node.output(0)] = run_concat(concat_inputs, axis);
+        } else if (op_type == "Pad") {
+            const Tensor& in = get_tensor(node.input(0));
             std::vector<int64_t> pads;
             float constant_value = 0.0f;
-            for(const auto& attr : node.attribute()){
-                if(attr.name() == "pads"){
-                    for(int i = 0; i < attr.ints_size() ; ++i){
+            for (const auto& attr : node.attribute()) {
+                if (attr.name() == "pads") {
+                    for (int i = 0; i < attr.ints_size(); ++i) {
                         pads.push_back(attr.ints(i));
                     }
-                }
-                else if(attr.name() == "value"){
+                } else if (attr.name() == "value") {
                     constant_value = attr.f();
                 }
             }
-            if(pads.empty() && node.input_size() > 1 && inputs.find(node.input(1)) != inputs.end() ){
+            if (pads.empty() && node.input_size() > 1 &&
+                inputs.find(node.input(1)) != inputs.end()) {
                 const Tensor& pads_tensor = inputs[node.input(1)];
-                if(pads_tensor.data.size() == pads_tensor.size() * sizeof(int64_t)){
-                    const int64_t *ptr = reinterpret_cast<const int64_t*>(pads_tensor.raw_data());
-                    for(size_t i = 0 ; i < pads_tensor.size(); ++i){
+                if (pads_tensor.data.size() == pads_tensor.size() * sizeof(int64_t)) {
+                    const int64_t* ptr = reinterpret_cast<const int64_t*>(pads_tensor.raw_data());
+                    for (size_t i = 0; i < pads_tensor.size(); ++i) {
                         pads.push_back(ptr[i]);
                     }
                 }
             }
-            inputs[node.output(0)] = run_pad(in,pads,constant_value);
-        }
-        else if(op_type == "MatMul"){
+            inputs[node.output(0)] = run_pad(in, pads, constant_value);
+        } else if (op_type == "MatMul") {
             const Tensor& A = get_tensor(node.input(0));
             const Tensor& B = get_tensor(node.input(1));
             inputs[node.output(0)] = run_matmul(A, B);
-        }
-        else if(op_type == "Softmax"){
+        } else if (op_type == "Softmax") {
             const Tensor& in = get_tensor(node.input(0));
             int64_t axis = -1;
-            for(const auto& attr : node.attribute()){
-                if(attr.name() == "axis"){
+            for (const auto& attr : node.attribute()) {
+                if (attr.name() == "axis") {
                     axis = attr.i();
                 }
             }
             inputs[node.output(0)] = run_softmax(in, axis);
-        } 
-        else if(op_type == "Transpose"){
+        } else if (op_type == "Transpose") {
             const Tensor& in = get_tensor(node.input(0));
             std::vector<int64_t> perm;
-            for(const auto& attr : node.attribute()){
-                if(attr.name() == "perm"){
-                    for(int i = 0; i < attr.ints_size(); ++i){
+            for (const auto& attr : node.attribute()) {
+                if (attr.name() == "perm") {
+                    for (int i = 0; i < attr.ints_size(); ++i) {
                         perm.push_back(attr.ints(i));
                     }
                 }
             }
             inputs[node.output(0)] = run_transpose(in, perm);
-        }
-        else if(op_type == "LayerNormalization"){
+        } else if (op_type == "LayerNormalization") {
             const Tensor& in = get_tensor(node.input(0));
             const Tensor& scale = get_tensor(node.input(1));
             Tensor bias = (node.input_size() > 2 && inputs.find(node.input(2)) != inputs.end())
-                           ? inputs[node.input(2)] : Tensor();
+                              ? inputs[node.input(2)]
+                              : Tensor();
             inputs[node.output(0)] = run_layernorm(const_cast<Tensor&>(in), scale, bias);
-        }
-        else if(op_type == "Gelu"){
+        } else if (op_type == "Gelu") {
             const Tensor& in = get_tensor(node.input(0));
             inputs[node.output(0)] = run_GELU(in);
-        }
-        else if(op_type == "Silu"){
+        } else if (op_type == "Silu") {
             const Tensor& in = get_tensor(node.input(0));
             inputs[node.output(0)] = run_SilU(in);
         }
@@ -363,8 +341,7 @@ Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image){
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    std::cout <<"Duration: "<<duration << " us\n";
+    std::cout << "Duration: " << duration << " us\n";
 
     return inputs[final_output_name];
 }
-

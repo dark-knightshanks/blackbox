@@ -11,39 +11,31 @@
 #include "engine.h"
 #include "ops.h"
 
-
 /*to load the image from the assests folder*/
 Tensor load_image(const std::string& filepath) {
     Tensor tensor;
 
     tensor.shape = {1, 1, 28, 28};
     constexpr size_t total_elements = 28 * 28;
-    tensor.data.resize(total_elements*sizeof(float));
+    tensor.data.resize(total_elements * sizeof(float));
     std::ifstream file(filepath, std::ios::binary);
 
     if (!file.is_open()) {
-        throw std::runtime_error(
-            "Failed to open image file: " + filepath
-        );
+        throw std::runtime_error("Failed to open image file: " + filepath);
     }
-    file.read(
-        reinterpret_cast<char*>(tensor.data.data()),
-        total_elements * sizeof(float)
-    );
+    file.read(reinterpret_cast<char*>(tensor.data.data()), total_elements * sizeof(float));
     if (!file) {
-        throw std::runtime_error(
-            "Failed to read image: " + filepath
-        );
+        throw std::runtime_error("Failed to read image: " + filepath);
     }
     file.close();
     return tensor;
 }
 
-int main(){
+int main() {
     onnx::ModelProto model;
     std::ifstream input("model.onnx", std::ios::binary);
-    if(!input.is_open()){
-        std::cerr<<"Could not load file!!"<<std::endl;
+    if (!input.is_open()) {
+        std::cerr << "Could not load file!!" << std::endl;
         return 1;
     }
     model.ParseFromIstream(&input);
@@ -67,14 +59,11 @@ int main(){
                 correct_count++;
             }
 
-            std::cout << "File: " << filename 
-                      << " | Expected: " << expected 
-                      << " | Predicted: " << predicted 
+            std::cout << "File: " << filename << " | Expected: " << expected
+                      << " | Predicted: " << predicted
                       << " | Confidence Score: " << out_ptr[predicted]
-                      << " | Status: " << (is_correct ? "PASS" : "FAIL") 
-                      << "\n";
-        } 
-        catch (const std::exception& e) {
+                      << " | Status: " << (is_correct ? "PASS" : "FAIL") << "\n";
+        } catch (const std::exception& e) {
             std::cerr << "Error testing " << filename << ": " << e.what() << "\n";
         }
     }
