@@ -21,6 +21,16 @@ Tensor run_relu(const Tensor& input){
     std::cout<<"Duration: "<< duration << " us\n";
     return output;
 }
+void RELUOperator::forward(uint8_t* arena,
+                     const std::vector<size_t>& input_offset,
+                     const std::vector<const uint8_t*>& weight_ptr,
+                     const std::vector<size_t>& output_offset) {
+     const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+     float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+     for(int64_t i = 0; i < count; ++i){
+        out_ptr[i] = std::max(0.0f, in_ptr[i]);
+     }
+}
 
 Tensor run_GELU(const Tensor& input){
     auto start = std::chrono::high_resolution_clock::now();
@@ -42,6 +52,19 @@ Tensor run_GELU(const Tensor& input){
     return output;
 }
 
+void GELUOperator::forward(uint8_t* arena,
+                     const std::vector<size_t>& input_offset,
+                     const std::vector<const uint8_t*>& weight_ptr,
+                     const std::vector<size_t>& output_offset) {
+     double a = sqrt(2.0f / PI);
+     const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+     float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+     for(int64_t i = 0; i < count; ++i){
+        float x = in_ptr[i];
+        out_ptr[i] = 0.5 * x * (1 + tanh(a * (x + (0.044715*(x*x*x)))));
+     }
+}
+
 Tensor run_SilU(const Tensor& input){
     auto start = std::chrono::high_resolution_clock::now();
     Tensor output;
@@ -60,6 +83,19 @@ Tensor run_SilU(const Tensor& input){
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     std::cout<<"Duration: "<< duration << " us\n";
     return output;
+}
+
+void SILUOperator::forward(uint8_t* arena,
+                     const std::vector<size_t>& input_offset,
+                     const std::vector<const uint8_t*>& weight_ptr,
+                     const std::vector<size_t>& output_offset) {
+     const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+     float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+     for(int64_t i = 0; i < count; ++i){
+        float x = in_ptr[i];
+        float sigmoid = 1.0f /(1.0f + (exp(-1*x)));
+        out_ptr[i] = x * sigmoid;
+     }
 }
 
 Tensor run_softmax(const Tensor& input, int64_t axis){
@@ -102,3 +138,46 @@ Tensor run_softmax(const Tensor& input, int64_t axis){
 
     return output;
 }
+
+void SoftmaxOperator::forward(uint8_t* arena,
+                              const std::vector<size_t>& input_offset,
+                              const std::vector<const uint8_t*>& weight_ptr,
+                              const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    int rank = shape.size();
+    int64_t ax = axis;
+    if (ax < 0) {
+        ax += rank;
+    }
+
+    int64_t total_elements = 1;
+    for (int64_t d : shape) {
+        total_elements *= d;
+    }
+
+    int64_t dim = shape[ax];
+    int64_t outer_size = total_elements / dim;
+
+    for (int64_t i = 0; i < outer_size; ++i) {
+        int64_t offset = i * dim;
+        float max_val = in_ptr[offset];
+        for (int64_t k = 1; k < dim; ++k) {
+            if (in_ptr[offset + k] > max_val) {
+                max_val = in_ptr[offset + k];
+            }
+        }
+        float sum = 0.0f;
+        for (int64_t k = 0; k < dim; ++k) {
+            float exp_val = exp(in_ptr[offset + k] - max_val);
+            out_ptr[offset + k] = exp_val;
+            sum += exp_val;
+        }
+        float inv_sum = 1.0f / sum;
+        for (int64_t k = 0; k < dim; ++k) {
+            out_ptr[offset + k] *= inv_sum;
+        }
+    }
+}
+

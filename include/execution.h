@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <cstring>
+#include <chrono>
 #include "ops.h"
 #include "arena.h"
 
@@ -35,14 +36,25 @@ class ExecutionGraph {
             plan.push_back({ops.back().get(), input_offsets, weight_ptrs, output_offsets});
         } 
         void run (const float* input, size_t in_bytes, float* output){
+            auto total_start = std::chrono::high_resolution_clock::now();
+
             memcpy(arena.base() + input_offset, input, in_bytes);
 
             for(const auto& step : plan){
-                std::cout << "Executing : " << step.op->name() << "\n";
+                auto step_start = std::chrono::high_resolution_clock::now();
+
                 step.op->forward(arena.base(), step.in_offset, step.weight_ptr, step.out_offset);
+
+                auto step_end = std::chrono::high_resolution_clock::now();
+                auto step_us = std::chrono::duration_cast<std::chrono::microseconds>(step_end - step_start).count();
+                std::cout << "Executing: " << step.op->name() << " [" << step_us << " us]\n";
             }
 
             memcpy(output, arena.base() + output_offset, output_bytes);
+
+            auto total_end = std::chrono::high_resolution_clock::now();
+            auto total_us = std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start).count();
+            std::cout << "Total Inference Time: " << total_us / 1000.0f << " ms\n";
         }
 
 };

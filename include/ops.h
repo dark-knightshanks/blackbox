@@ -18,6 +18,59 @@ class Operator{
         virtual const std::string& name() const = 0;                    
 };
 
+class RELUOperator : public Operator {
+    private:
+        int64_t count; // no. of input float elements to process
+        std::string op_name = "Relu";
+    public:
+        RELUOperator(int64_t count) : count(count) {};
+        void forward(uint8_t* arena,
+                     const std::vector<size_t>& input_offset,
+                     const std::vector<const uint8_t*>& weight_ptr,
+                     const std::vector<size_t>& output_offset) override ;
+         const std::string& name() const override { return op_name;};
+};
+
+class GELUOperator : public Operator {
+    private:
+        int64_t count;
+        std::string op_name = "Gelu";
+     public:
+        GELUOperator(int64_t count) : count(count) {};
+        void forward(uint8_t* arena,
+                     const std::vector<size_t>& input_offset,
+                     const std::vector<const uint8_t*>& weight_ptr,
+                     const std::vector<size_t>& output_offset) override ;
+         const std::string& name() const override { return op_name;};
+};
+
+class SILUOperator : public Operator {
+    private:
+        int64_t count;
+        std::string op_name = "Silu";
+     public:
+        SILUOperator(int64_t count) : count(count) {};
+        void forward(uint8_t* arena,
+                     const std::vector<size_t>& input_offset,
+                     const std::vector<const uint8_t*>& weight_ptr,
+                     const std::vector<size_t>& output_offset) override ;
+         const std::string& name() const override { return op_name;};
+};
+
+class SoftmaxOperator : public Operator {
+    private:
+        std::vector<int64_t> shape;
+        int64_t axis;
+        std::string op_name = "Softmax";
+    public:
+        SoftmaxOperator(const std::vector<int64_t>& shape, int64_t axis = -1)
+            : shape(shape), axis(axis) {}
+        void forward(uint8_t* arena,
+                     const std::vector<size_t>& input_offset,
+                     const std::vector<const uint8_t*>& weight_ptr,
+                     const std::vector<size_t>& output_offset) override;
+        const std::string& name() const override { return op_name; }
+};
 constexpr double PI = 3.14159265358979323846;
 Tensor run_relu(const Tensor& input);
 Tensor run_GELU(const Tensor& input);
