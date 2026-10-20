@@ -239,8 +239,8 @@ void Conv2DOperator::forward(uint8_t* arena, const std::vector<size_t>& input_of
 }
 
 void MaxPool2DOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
-                               const std::vector<const uint8_t*>& weight_ptr,
-                               const std::vector<size_t>& output_offset) {
+                                const std::vector<const uint8_t*>& weight_ptr,
+                                const std::vector<size_t>& output_offset) {
     const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
     float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
 

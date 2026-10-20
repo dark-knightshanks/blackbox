@@ -116,3 +116,62 @@ Tensor run_matmul(const Tensor& A, const Tensor& B) {
 
     return output;
 }
+
+void GemmOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                           const std::vector<const uint8_t*>& weight_ptr,
+                           const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    const float* w_ptr = reinterpret_cast<const float*>(weight_ptr[0]);
+    const float* bias_ptr = has_bias ? reinterpret_cast<const float*>(weight_ptr[1]) : nullptr;
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    for (int i = 0; i < M; ++i) {
+        for (int j = 0; j < N; ++j) {
+            float sum = 0.0f;
+            for (int k = 0; k < K; ++k) {
+                int i1 = (i * K) + k;
+                int i2 = (transB == 1) ? (j * K + k) : (k * N + j);
+                sum += in_ptr[i1] * w_ptr[i2];
+            }
+            if (has_bias) {
+                sum += bias_ptr[j];
+            }
+            out_ptr[(i * N) + j] = sum;
+        }
+    }
+}
+
+void MatMulOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                             const std::vector<const uint8_t*>& weight_ptr,
+                             const std::vector<size_t>& output_offset) {
+    const float* A_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    const float* B_ptr = (weight_ptr.empty() || weight_ptr[0] == nullptr)
+                             ? reinterpret_cast<const float*>(arena + input_offset[1])
+                             : reinterpret_cast<const float*>(weight_ptr[0]);
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    for (int64_t b = 0; b < batch; ++b) {
+        for (int64_t h = 0; h < heads; ++h) {
+            int64_t b_a = b_a_broadcast ? 0 : b;
+            int64_t b_b = b_b_broadcast ? 0 : b;
+            int64_t h_a = h_a_broadcast ? 0 : h;
+            int64_t h_b = h_b_broadcast ? 0 : h;
+
+            int64_t offset_A = (b_a * heads + h_a) * (M * K);
+            int64_t offset_B = (b_b * heads + h_b) * (K * N);
+            int64_t offset_Out = (b * heads + h) * (M * N);
+
+            for (int64_t m = 0; m < M; ++m) {
+                for (int64_t n = 0; n < N; ++n) {
+                    float sum = 0.0f;
+                    for (int64_t k = 0; k < K; ++k) {
+                        float a_val = A_ptr[offset_A + (m * K + k)];
+                        float b_val = B_ptr[offset_B + (k * N + n)];
+                        sum += a_val * b_val;
+                    }
+                    out_ptr[offset_Out + (m * N + n)] = sum;
+                }
+            }
+        }
+    }
+}

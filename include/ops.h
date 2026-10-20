@@ -232,6 +232,46 @@ public:
     const std::string& name() const override { return op_name; }
 };
 
+class GemmOperator : public Operator {
+private:
+    int M, K, N;
+    int transB;
+    bool has_bias;
+    std::string op_name = "Gemm";
+
+public:
+    GemmOperator(int M, int K, int N, int transB = 0, bool has_bias = false)
+        : M(M), K(K), N(N), transB(transB), has_bias(has_bias) {}
+
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
+class MatMulOperator : public Operator {
+private:
+    int64_t batch, heads, M, K, N;
+    bool b_a_broadcast, b_b_broadcast;
+    bool h_a_broadcast, h_b_broadcast;
+    std::string op_name = "MatMul";
+
+public:
+    MatMulOperator(int64_t batch, int64_t heads, int64_t M, int64_t K, int64_t N,
+                   bool b_a_broadcast = false, bool b_b_broadcast = false,
+                   bool h_a_broadcast = false, bool h_b_broadcast = false)
+        : batch(batch), heads(heads), M(M), K(K), N(N), b_a_broadcast(b_a_broadcast),
+          b_b_broadcast(b_b_broadcast), h_a_broadcast(h_a_broadcast), h_b_broadcast(h_b_broadcast) {
+    }
+
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
 constexpr double PI = 3.14159265358979323846;
 Tensor run_relu(const Tensor& input);
 Tensor run_GELU(const Tensor& input);
