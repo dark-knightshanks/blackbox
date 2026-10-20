@@ -33,6 +33,9 @@ public:
     ExecutionGraph(const ExecutionGraph&) = delete;
     ExecutionGraph& operator=(const ExecutionGraph&) = delete;
 
+    ExecutionGraph(ExecutionGraph&&) = default;
+    ExecutionGraph& operator=(ExecutionGraph&&) = default;
+
     void add_step(std::unique_ptr<Operator> op, std::vector<size_t> input_offsets,
                   std::vector<const uint8_t*> weight_ptrs, std::vector<size_t> output_offsets) {
         ops.push_back(std::move(op));  // transfers ownership to vector

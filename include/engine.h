@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include "execution.h"
 
 struct Node {
     std::string op_type;
@@ -13,3 +14,7 @@ struct Node {
 void loadinitializer(const onnx::GraphProto& graph);
 std::vector<Node> graph(const onnx::GraphProto& graph);
 Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image);
+
+ExecutionGraph build_execution_graph(const onnx::GraphProto& graph,
+                                     const std::vector<int64_t>& input_shape,
+                                     size_t arena_size = 50 * 1024 * 1024);

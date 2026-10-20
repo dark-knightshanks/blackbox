@@ -345,3 +345,281 @@ Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image) {
 
     return inputs[final_output_name];
 }
+
+ExecutionGraph build_execution_graph(const onnx::GraphProto& graph,
+                                     const std::vector<int64_t>& input_shape, size_t arena_size) {
+    std::unordered_map<std::string, size_t> tensor_offsets;
+    std::unordered_map<std::string, std::vector<int64_t>> tensor_shapes;
+
+    std::string input_name = graph.input_size() > 0 ? graph.input(0).name() : "";
+    if (graph.node_size() > 0 && graph.node(0).input_size() > 0) {
+        if (input_name.empty() || weight.find(input_name) != weight.end()) {
+            input_name = graph.node(0).input(0);
+        }
+    }
+
+    tensor_offsets[input_name] = 0;
+    tensor_shapes[input_name] = input_shape;
+
+    int64_t input_elements = 1;
+    for (int64_t d : input_shape) {
+        input_elements *= d;
+    }
+    size_t current_offset = (input_elements * sizeof(float) + 63) & ~size_t(63);
+
+    std::string final_output_name = graph.output_size() > 0 ? graph.output(0).name() : "";
+
+    // Temporary graph object to add steps into
+    std::vector<std::unique_ptr<Operator>> ops;
+    std::vector<ExecutionStep> plan;
+
+    for (const auto& node : graph.node()) {
+        const std::string& op_type = node.op_type();
+
+        if (op_type == "Conv") {
+            const std::string& in_name = node.input(0);
+            const std::string& w_name = node.input(1);
+            const auto& in_shape = tensor_shapes[in_name];
+            const auto& w_tensor = weight[w_name];
+
+            int64_t N = in_shape[0], C = in_shape[1], H = in_shape[2], W = in_shape[3];
+            int64_t C_out = w_tensor.shape[0];
+            int64_t Kh = w_tensor.shape[2], Kw = w_tensor.shape[3];
+
+            int64_t Sh = 1, Sw = 1, Ph = 0, Pw = 0;
+            for (const auto& attr : node.attribute()) {
+                if (attr.name() == "strides") {
+                    if (attr.ints_size() > 0)
+                        Sh = attr.ints(0);
+                    if (attr.ints_size() > 1)
+                        Sw = attr.ints(1);
+                } else if (attr.name() == "pads") {
+                    if (attr.ints_size() > 0)
+                        Ph = attr.ints(0);
+                    if (attr.ints_size() > 1)
+                        Pw = attr.ints(1);
+                }
+            }
+
+            int64_t H_out = (H + 2 * Ph - Kh) / Sh + 1;
+            int64_t W_out = (W + 2 * Pw - Kw) / Sw + 1;
+            std::vector<int64_t> out_shape = {N, C_out, H_out, W_out};
+
+            size_t out_elements = N * C_out * H_out * W_out;
+            size_t out_offset = (current_offset + 63) & ~size_t(63);
+            current_offset = out_offset + out_elements * sizeof(float);
+
+            tensor_offsets[node.output(0)] = out_offset;
+            tensor_shapes[node.output(0)] = out_shape;
+
+            bool has_bias = node.input_size() > 2 && weight.find(node.input(2)) != weight.end();
+            std::vector<const uint8_t*> weight_ptrs = {w_tensor.raw_data()};
+            if (has_bias) {
+                weight_ptrs.push_back(weight[node.input(2)].raw_data());
+            }
+
+            auto op = std::make_unique<Conv2DOperator>(N, C, H, W, C_out, Kh, Kw, Sh, Sw, Ph, Pw,
+                                                       has_bias);
+            ops.push_back(std::move(op));
+            plan.push_back(
+                {ops.back().get(), {tensor_offsets[in_name]}, weight_ptrs, {out_offset}});
+
+        } else if (op_type == "BatchNormalization") {
+            const std::string& in_name = node.input(0);
+            const auto& in_shape = tensor_shapes[in_name];
+            int64_t num = in_shape[0], channels = in_shape[1], height = in_shape[2],
+                    width = in_shape[3];
+
+            float epsilon = 1e-5f;
+            for (const auto& attr : node.attribute()) {
+                if (attr.name() == "epsilon")
+                    epsilon = attr.f();
+            }
+
+            size_t out_elements = num * channels * height * width;
+            // In-place reuse: can use same offset as input!
+            size_t out_offset = tensor_offsets[in_name];
+            tensor_offsets[node.output(0)] = out_offset;
+            tensor_shapes[node.output(0)] = in_shape;
+
+            std::vector<const uint8_t*> weight_ptrs = {
+                weight[node.input(1)].raw_data(), weight[node.input(2)].raw_data(),
+                weight[node.input(3)].raw_data(), weight[node.input(4)].raw_data()};
+
+            auto op = std::make_unique<BatchNormOperator>(num, channels, height, width, epsilon);
+            ops.push_back(std::move(op));
+            plan.push_back(
+                {ops.back().get(), {tensor_offsets[in_name]}, weight_ptrs, {out_offset}});
+
+        } else if (op_type == "Relu") {
+            const std::string& in_name = node.input(0);
+            const auto& in_shape = tensor_shapes[in_name];
+            int64_t count = 1;
+            for (int64_t d : in_shape)
+                count *= d;
+
+            // In-place reuse!
+            size_t out_offset = tensor_offsets[in_name];
+            tensor_offsets[node.output(0)] = out_offset;
+            tensor_shapes[node.output(0)] = in_shape;
+
+            auto op = std::make_unique<RELUOperator>(count);
+            ops.push_back(std::move(op));
+            plan.push_back({ops.back().get(), {tensor_offsets[in_name]}, {}, {out_offset}});
+
+        } else if (op_type == "MaxPool") {
+            const std::string& in_name = node.input(0);
+            const auto& in_shape = tensor_shapes[in_name];
+            int64_t N = in_shape[0], C = in_shape[1], H = in_shape[2], W = in_shape[3];
+
+            int64_t Kh = 1, Kw = 1, Sh = 1, Sw = 1, Ph = 0, Pw = 0;
+            for (const auto& attr : node.attribute()) {
+                if (attr.name() == "kernel_shape") {
+                    if (attr.ints_size() > 0)
+                        Kh = attr.ints(0);
+                    if (attr.ints_size() > 1)
+                        Kw = attr.ints(1);
+                } else if (attr.name() == "strides") {
+                    if (attr.ints_size() > 0)
+                        Sh = attr.ints(0);
+                    if (attr.ints_size() > 1)
+                        Sw = attr.ints(1);
+                } else if (attr.name() == "pads") {
+                    if (attr.ints_size() > 0)
+                        Ph = attr.ints(0);
+                    if (attr.ints_size() > 1)
+                        Pw = attr.ints(1);
+                }
+            }
+
+            int64_t H_out = (H + 2 * Ph - Kh) / Sh + 1;
+            int64_t W_out = (W + 2 * Pw - Kw) / Sw + 1;
+            std::vector<int64_t> out_shape = {N, C, H_out, W_out};
+
+            size_t out_elements = N * C * H_out * W_out;
+            size_t out_offset = (current_offset + 63) & ~size_t(63);
+            current_offset = out_offset + out_elements * sizeof(float);
+
+            tensor_offsets[node.output(0)] = out_offset;
+            tensor_shapes[node.output(0)] = out_shape;
+
+            auto op = std::make_unique<MaxPool2DOperator>(N, C, H, W, Kh, Kw, Sh, Sw, Ph, Pw);
+            ops.push_back(std::move(op));
+            plan.push_back({ops.back().get(), {tensor_offsets[in_name]}, {}, {out_offset}});
+
+        } else if (op_type == "GlobalAveragePool") {
+            const std::string& in_name = node.input(0);
+            const auto& in_shape = tensor_shapes[in_name];
+            int64_t num = in_shape[0], channels = in_shape[1], height = in_shape[2],
+                    width = in_shape[3];
+
+            std::vector<int64_t> out_shape = {num, channels, 1, 1};
+            size_t out_elements = num * channels;
+            size_t out_offset = (current_offset + 63) & ~size_t(63);
+            current_offset = out_offset + out_elements * sizeof(float);
+
+            tensor_offsets[node.output(0)] = out_offset;
+            tensor_shapes[node.output(0)] = out_shape;
+
+            auto op = std::make_unique<GlobalAvgPoolOperator>(num, channels, height, width);
+            ops.push_back(std::move(op));
+            plan.push_back({ops.back().get(), {tensor_offsets[in_name]}, {}, {out_offset}});
+
+        } else if (op_type == "Flatten") {
+            const std::string& in_name = node.input(0);
+            const auto& in_shape = tensor_shapes[in_name];
+            int64_t total = 1;
+            for (int64_t d : in_shape)
+                total *= d;
+
+            std::vector<int64_t> out_shape = {in_shape[0], total / in_shape[0]};
+            size_t out_offset = tensor_offsets[in_name];  // zero-cost alias!
+            tensor_offsets[node.output(0)] = out_offset;
+            tensor_shapes[node.output(0)] = out_shape;
+
+            auto op = std::make_unique<FlattenOperator>(total);
+            ops.push_back(std::move(op));
+            plan.push_back({ops.back().get(), {tensor_offsets[in_name]}, {}, {out_offset}});
+
+        } else if (op_type == "Gemm") {
+            const std::string& in_name = node.input(0);
+            const std::string& w_name = node.input(1);
+            const auto& in_shape = tensor_shapes[in_name];
+            const auto& w_tensor = weight[w_name];
+
+            int transB = 0;
+            for (const auto& attr : node.attribute()) {
+                if (attr.name() == "transB")
+                    transB = static_cast<int>(attr.i());
+            }
+
+            int K = transB ? w_tensor.shape[1] : w_tensor.shape[0];
+            int N = transB ? w_tensor.shape[0] : w_tensor.shape[1];
+            int64_t in_total = 1;
+            for (int64_t d : in_shape)
+                in_total *= d;
+            int M = (K > 0) ? static_cast<int>(in_total / K) : 1;
+
+            std::vector<int64_t> out_shape = {M, N};
+            size_t out_elements = M * N;
+            size_t out_offset = (current_offset + 63) & ~size_t(63);
+            current_offset = out_offset + out_elements * sizeof(float);
+
+            tensor_offsets[node.output(0)] = out_offset;
+            tensor_shapes[node.output(0)] = out_shape;
+
+            bool has_bias = node.input_size() > 2 && weight.find(node.input(2)) != weight.end();
+            std::vector<const uint8_t*> weight_ptrs = {w_tensor.raw_data()};
+            if (has_bias) {
+                weight_ptrs.push_back(weight[node.input(2)].raw_data());
+            }
+
+            auto op = std::make_unique<GemmOperator>(M, K, N, transB, has_bias);
+            ops.push_back(std::move(op));
+            plan.push_back(
+                {ops.back().get(), {tensor_offsets[in_name]}, weight_ptrs, {out_offset}});
+
+        } else if (op_type == "Add") {
+            const std::string& in0 = node.input(0);
+            const std::string& in1 = node.input(1);
+            const auto& s0 = tensor_shapes[in0];
+            const auto& s1 = tensor_shapes[in1];
+
+            int64_t count0 = 1;
+            for (int64_t d : s0)
+                count0 *= d;
+            int64_t count1 = 1;
+            for (int64_t d : s1)
+                count1 *= d;
+
+            int64_t big_count = std::max(count0, count1);
+            int64_t small_count = std::min(count0, count1);
+
+            size_t out_offset = (current_offset + 63) & ~size_t(63);
+            current_offset = out_offset + big_count * sizeof(float);
+
+            tensor_offsets[node.output(0)] = out_offset;
+            tensor_shapes[node.output(0)] = (count0 >= count1) ? s0 : s1;
+
+            auto op = std::make_unique<ADDOperator>(big_count, small_count);
+            ops.push_back(std::move(op));
+            plan.push_back(
+                {ops.back().get(), {tensor_offsets[in0], tensor_offsets[in1]}, {}, {out_offset}});
+        }
+    }
+
+    size_t out_offset = tensor_offsets[final_output_name];
+    int64_t final_elements = 1;
+    for (int64_t d : tensor_shapes[final_output_name]) {
+        final_elements *= d;
+    }
+    size_t output_bytes = final_elements * sizeof(float);
+
+    ExecutionGraph engine(arena_size, 0, out_offset, output_bytes);
+    for (size_t i = 0; i < ops.size(); ++i) {
+        engine.add_step(std::move(ops[i]), plan[i].in_offset, plan[i].weight_ptr,
+                        plan[i].out_offset);
+    }
+
+    return engine;
+}

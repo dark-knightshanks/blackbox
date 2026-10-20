@@ -17,9 +17,32 @@ public:
         }
         memset(buffer, 0, total_bytes);  // zeros out entire arena
     }
-    ~MemoryArena() { free(buffer); }
-    MemoryArena(const MemoryArena&) = delete;             // does not allow copy constuctor
-    MemoryArena& operator=(const MemoryArena&) = delete;  // does noot allow assignment copying
+    ~MemoryArena() {
+        if (buffer)
+            free(buffer);
+    }
+    MemoryArena(const MemoryArena&) = delete;             // does not allow copy constructor
+    MemoryArena& operator=(const MemoryArena&) = delete;  // does not allow assignment copying
+
+    MemoryArena(MemoryArena&& other) noexcept
+        : buffer(other.buffer), capacity(other.capacity), offset(other.offset) {
+        other.buffer = nullptr;
+        other.capacity = 0;
+        other.offset = 0;
+    }
+    MemoryArena& operator=(MemoryArena&& other) noexcept {
+        if (this != &other) {
+            if (buffer)
+                free(buffer);
+            buffer = other.buffer;
+            capacity = other.capacity;
+            offset = other.offset;
+            other.buffer = nullptr;
+            other.capacity = 0;
+            other.offset = 0;
+        }
+        return *this;
+    }
 
     uint8_t* alloc(size_t num_bytes) {
         size_t aligned_offset = (offset + 63) & ~63;  // alligns the offset as 64 bytes

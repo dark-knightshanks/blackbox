@@ -50,15 +50,28 @@ int main() {
     const onnx::GraphProto& graphproto = model.graph();
     loadinitializer(graphproto);
 
+    std::cout << "\n--- Building ExecutionGraph (Compiling ONNX to Arena Steps) ---\n";
+    ExecutionGraph engine = build_execution_graph(graphproto, {1, 3, 224, 224}, 50 * 1024 * 1024);
+    std::cout << "--- Build Complete! Running zero-malloc Arena inference ---\n\n";
+
     int correct_count = 0;
 
-    for (int i = 0; i < test.size(); ++i) {
-
+    for (size_t i = 0; i < test.size(); ++i) {
         try {
             Tensor input_image = load_image(test[i].filename);
-            Tensor output_digit = run_inference(graphproto, input_image);
-            int predicted = argmax(output_digit);
-            float* out_ptr = reinterpret_cast<float*>(output_digit.data.data());
+            std::vector<float> output_logits(1000);
+
+            engine.run(reinterpret_cast<const float*>(input_image.raw_data()),
+                       input_image.byte_size(), output_logits.data());
+
+            int predicted = 0;
+            float max_score = output_logits[0];
+            for (int c = 1; c < 1000; ++c) {
+                if (output_logits[c] > max_score) {
+                    max_score = output_logits[c];
+                    predicted = c;
+                }
+            }
 
             bool is_correct = (predicted == test[i].expected_id);
             if (is_correct) {
@@ -67,8 +80,8 @@ int main() {
 
             std::cout << "File: " << test[i].filename << " | Expected: " << test[i].label_name
                       << " | Predicted: " << predicted
-                      << " | Confidence Score: " << out_ptr[predicted]
-                      << " | Status: " << (is_correct ? "PASS" : "FAIL") << "\n";
+                      << " | Confidence Score: " << output_logits[predicted]
+                      << " | Status: " << (is_correct ? "PASS" : "FAIL") << "\n\n";
         } catch (const std::exception& e) {
             std::cerr << "Error testing " << test[i].filename << ": " << e.what() << "\n";
         }
