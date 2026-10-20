@@ -70,6 +70,105 @@ public:
                  const std::vector<size_t>& output_offset) override;
     const std::string& name() const override { return op_name; }
 };
+
+class ADDOperator : public Operator {
+private:
+    int64_t big_count;
+    int64_t small_count;
+    std::string op_name = "ADD";
+
+public:
+    ADDOperator(int64_t big_count, int64_t small_count)
+        : big_count(big_count), small_count(small_count) {}
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+    const std::string& name() const override { return op_name; }
+};
+
+class ReshapeOperator : public Operator {
+private:
+    size_t count;
+    std::string op_name = "Reshape";
+
+public:
+    explicit ReshapeOperator(size_t count) : count(count) {}
+
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
+class FlattenOperator : public Operator {
+private:
+    size_t count;
+    std::string op_name = "Flatten";
+
+public:
+    explicit FlattenOperator(size_t count) : count(count) {}
+
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
+class TransposeOperator : public Operator {
+private:
+    std::vector<int64_t> input_shape;
+    std::vector<int64_t> perm;
+    std::string op_name = "Transpose";
+
+public:
+    explicit TransposeOperator(std::vector<int64_t> input_shape, std::vector<int64_t> perm)
+        : input_shape(input_shape), perm(perm) {}
+
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
+class ConcatOperator : public Operator {
+private:
+    std::vector<std::vector<int64_t>> input_shapes;
+    int64_t axis;
+    std::string op_name = "Concat";
+
+public:
+    ConcatOperator(const std::vector<std::vector<int64_t>>& input_shapes, int64_t axis)
+        : input_shapes(input_shapes), axis(axis) {}
+
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
+class PadOperator : public Operator {
+private:
+    std::vector<int64_t> in_shape;
+    std::vector<int64_t> pads;
+    float constant_val;
+    std::string op_name = "Pad";
+
+public:
+    PadOperator(const std::vector<int64_t>& in_shape, const std::vector<int64_t>& pads,
+                float constant_val = 0.0f)
+        : in_shape(in_shape), pads(pads), constant_val(constant_val) {}
+
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
 constexpr double PI = 3.14159265358979323846;
 Tensor run_relu(const Tensor& input);
 Tensor run_GELU(const Tensor& input);
