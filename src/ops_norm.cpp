@@ -119,3 +119,82 @@ Tensor run_batchNorm(const Tensor& input, const Tensor& scale, const Tensor& B, 
     std::cout << "Duration: " << duration << " us\n";
     return output;
 }
+
+void LayerNormOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                                const std::vector<const uint8_t*>& weight_ptr,
+                                const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    const float* w_ptr = reinterpret_cast<const float*>(weight_ptr[0]);
+    const float* b_ptr = has_bias ? reinterpret_cast<const float*>(weight_ptr[1]) : nullptr;
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    for (int64_t i = 0; i < batch; ++i) {
+        for (int64_t j = 0; j < length; ++j) {
+            int64_t offset = (i * length + j) * dims;
+            float sum = 0.0f;
+            for (int64_t k = 0; k < dims; ++k) {
+                sum += in_ptr[offset + k];
+            }
+            float mean = sum / dims;
+            float sum_var = 0.0f;
+            for (int64_t k = 0; k < dims; ++k) {
+                float diff = in_ptr[offset + k] - mean;
+                sum_var += diff * diff;
+            }
+            float var = sum_var / dims;
+            float inv_std = 1.0f / std::sqrt(var + epsilon);
+            for (int64_t k = 0; k < dims; ++k) {
+                float norm = (in_ptr[offset + k] - mean) * inv_std;
+                out_ptr[offset + k] = norm * w_ptr[k] + (has_bias ? b_ptr[k] : 0.0f);
+            }
+        }
+    }
+}
+
+void RMSNormOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                              const std::vector<const uint8_t*>& weight_ptr,
+                              const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    const float* w_ptr = reinterpret_cast<const float*>(weight_ptr[0]);
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    for (int64_t i = 0; i < batch; ++i) {
+        for (int64_t j = 0; j < length; ++j) {
+            int64_t offset = (i * length + j) * dims;
+            float sum = 0.0f;
+            for (int64_t k = 0; k < dims; ++k) {
+                sum += in_ptr[offset + k] * in_ptr[offset + k];
+            }
+            float mean = sum / dims;
+            float inv_rms = 1.0f / std::sqrt(mean + epsilon);
+            for (int64_t k = 0; k < dims; ++k) {
+                out_ptr[offset + k] = w_ptr[k] * (in_ptr[offset + k] * inv_rms);
+            }
+        }
+    }
+}
+
+void BatchNormOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                                const std::vector<const uint8_t*>& weight_ptr,
+                                const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    const float* gamma = reinterpret_cast<const float*>(weight_ptr[0]);
+    const float* beta = reinterpret_cast<const float*>(weight_ptr[1]);
+    const float* pmu = reinterpret_cast<const float*>(weight_ptr[2]);
+    const float* sigma_sq = reinterpret_cast<const float*>(weight_ptr[3]);
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    int64_t dim = height * width;
+
+    for (int64_t n = 0; n < num; ++n) {
+        for (int64_t c = 0; c < channels; ++c) {
+            float inv_std = 1.0f / std::sqrt(sigma_sq[c] + epsilon);
+            float scale_factor = gamma[c] * inv_std;
+            float shift = beta[c] - (pmu[c] * scale_factor);
+            int64_t offset = (n * channels + c) * dim;
+            for (int64_t hw = 0; hw < dim; ++hw) {
+                out_ptr[offset + hw] = (in_ptr[offset + hw] * scale_factor) + shift;
+            }
+        }
+    }
+}

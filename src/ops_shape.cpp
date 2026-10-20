@@ -152,11 +152,11 @@ void TransposeOperator::forward(uint8_t* arena, const std::vector<size_t>& input
     float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
 
     int64_t p0 = perm[0], p1 = perm[1], p2 = perm[2], p3 = perm[3];
-    int64_t A = in_shape[0], B = in_shape[1], C = in_shape[2], D = in_shape[3];
+    int64_t A = input_shape[0], B = input_shape[1], C = input_shape[2], D = input_shape[3];
 
-    int64_t out_dim1 = in_shape[p1];
-    int64_t out_dim2 = in_shape[p2];
-    int64_t out_dim3 = in_shape[p3];
+    int64_t out_dim1 = input_shape[p1];
+    int64_t out_dim2 = input_shape[p2];
+    int64_t out_dim3 = input_shape[p3];
 
     for (int64_t i = 0; i < A; ++i) {
         for (int64_t j = 0; j < B; ++j) {

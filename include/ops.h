@@ -272,6 +272,60 @@ public:
     const std::string& name() const override { return op_name; }
 };
 
+class BatchNormOperator : public Operator {
+private:
+    int64_t num, channels, height, width;
+    float epsilon;
+    std::string op_name = "BatchNormalization";
+
+public:
+    BatchNormOperator(int64_t num, int64_t channels, int64_t height, int64_t width,
+                      float epsilon = 1e-5f)
+        : num(num), channels(channels), height(height), width(width), epsilon(epsilon) {}
+
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
+class LayerNormOperator : public Operator {
+private:
+    int64_t batch, length, dims;
+    float epsilon;
+    bool has_bias;
+    std::string op_name = "LayerNormalization";
+
+public:
+    LayerNormOperator(int64_t batch, int64_t length, int64_t dims, float epsilon = 1e-5f,
+                      bool has_bias = false)
+        : batch(batch), length(length), dims(dims), epsilon(epsilon), has_bias(has_bias) {}
+
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
+class RMSNormOperator : public Operator {
+private:
+    int64_t batch, length, dims;
+    float epsilon;
+    std::string op_name = "RMSNorm";
+
+public:
+    RMSNormOperator(int64_t batch, int64_t length, int64_t dims, float epsilon = 1e-5f)
+        : batch(batch), length(length), dims(dims), epsilon(epsilon) {}
+
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
 constexpr double PI = 3.14159265358979323846;
 Tensor run_relu(const Tensor& input);
 Tensor run_GELU(const Tensor& input);
