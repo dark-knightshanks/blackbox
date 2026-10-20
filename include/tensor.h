@@ -3,83 +3,74 @@
 #include <numeric>
 #include <cstdint>
 
-struct blockQ8_0{
+struct blockQ8_0 {
     uint16_t scale;
-    int8_t arr[32];// stores 8 bit quantized int in block of 32
+    int8_t arr[32];  // stores 8 bit quantized int in block of 32
 };
 
-struct blockQ4_0{
+struct blockQ4_0 {
     uint16_t scale;
-    uint8_t arr[16];// stores 4 bit quantized int in block of 16
+    uint8_t arr[16];  // stores 4 bit quantized int in block of 16
 };
 
-enum Dtype{
-   FP32 = 0,
-   FP16 = 1,
-   I32 = 3,
-   I8 = 4,
-   Q4_0 = 5,
-   Q8_0 = 6
-};
+enum Dtype { FP32 = 0, FP16 = 1, I32 = 3, I8 = 4, Q4_0 = 5, Q8_0 = 6 };
 
-inline int block_size_Dtype(Dtype a){
-    if(a == Q4_0 || a == Q8_0){
+inline int block_size_Dtype(Dtype a) {
+    if (a == Q4_0 || a == Q8_0) {
         return 32;
-    }
-    else{
+    } else {
         return 1;
     }
 }
 
-inline size_t sizeof_block(Dtype a){
+inline size_t sizeof_block(Dtype a) {
     size_t size = 0;
-    switch(a){
-        case Q4_0:
-            size = sizeof(blockQ4_0);
-            break;  // will return 18 bytess 
-        case Q8_0:
-            size = sizeof(blockQ8_0);// will return 34 bytes
-            break;
-        case FP32:
-            size = sizeof(float);
-            break;
-        case I32:
-            size = sizeof(int32_t);
-            break;
-        case FP16:
-            size = sizeof(float)/2;
-            break;
-        case I8:
-            size = sizeof(int8_t);
-            break;
+    switch (a) {
+    case Q4_0:
+        size = sizeof(blockQ4_0);
+        break;  // will return 18 bytess
+    case Q8_0:
+        size = sizeof(blockQ8_0);  // will return 34 bytes
+        break;
+    case FP32:
+        size = sizeof(float);
+        break;
+    case I32:
+        size = sizeof(int32_t);
+        break;
+    case FP16:
+        size = sizeof(float) / 2;
+        break;
+    case I8:
+        size = sizeof(int8_t);
+        break;
     }
     return size;
 }
 
-class Tensor{
+class Tensor {
 public:
-Dtype flag = FP32;
-std::vector<int64_t> shape;// shape of the weigths and images
-std::vector<uint8_t> data; //store all the data
-const uint8_t* external_ptr = nullptr;
-size_t size() const { // helps to calculate the total size 
+    Dtype flag = FP32;
+    std::vector<int64_t> shape;  // shape of the weigths and images
+    std::vector<uint8_t> data;   // store all the data
+    const uint8_t* external_ptr = nullptr;
+    size_t size() const {  // helps to calculate the total size
         size_t total = 1;
-        for(size_t i = 0; i<shape.size(); i++){
+        for (size_t i = 0; i < shape.size(); i++) {
             int64_t dim = shape[i];
             total *= dim;
-        } // mutliplies all the dim and return total size
+        }  // mutliplies all the dim and return total size
         return total;
     }
-size_t byte_size()const {
-    size_t el = size();
-    size_t el_per_block = el/block_size_Dtype(flag);
-    return el_per_block*sizeof_block(flag);
+    size_t byte_size() const {
+        size_t el = size();
+        size_t el_per_block = el / block_size_Dtype(flag);
+        return el_per_block * sizeof_block(flag);
     }
-const uint8_t* raw_data() const {
-    if(external_ptr != nullptr){
-        return external_ptr;
+    const uint8_t* raw_data() const {
+        if (external_ptr != nullptr) {
+            return external_ptr;
+        }
+        return data.data();
     }
-    return data.data();
-}
-
 };

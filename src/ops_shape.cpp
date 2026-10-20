@@ -6,13 +6,13 @@
 #include <numeric>
 #include <cstring>
 
-int argmax(const Tensor& output){
+int argmax(const Tensor& output) {
     int max_idx = 0;
     const float* out_ptr = reinterpret_cast<const float*>(output.raw_data());
     float max_value = out_ptr[0];
 
-    for(size_t i=0; i<output.size(); ++i){
-        if(out_ptr[i]>max_value){
+    for (size_t i = 0; i < output.size(); ++i) {
+        if (out_ptr[i] > max_value) {
             max_value = out_ptr[i];
             max_idx = static_cast<int>(i);
         }
@@ -23,13 +23,15 @@ int argmax(const Tensor& output){
 static std::vector<int64_t> parse_target_shape(const Tensor& shape) {
     std::vector<int64_t> target_dims;
     const uint8_t* raw = shape.raw_data();
-    if (raw == nullptr) return target_dims;
+    if (raw == nullptr)
+        return target_dims;
 
     size_t count = shape.size();
     if (count == 0) {
         count = shape.data.size() / sizeof(int64_t);
     }
-    if (count == 0) return target_dims;
+    if (count == 0)
+        return target_dims;
 
     const int64_t* ptr = reinterpret_cast<const int64_t*>(raw);
     for (size_t i = 0; i < count; ++i) {
@@ -43,7 +45,7 @@ Tensor run_reshape(const Tensor& input, const Tensor& shape) {
     Tensor output;
     output.external_ptr = input.external_ptr;
     if (output.external_ptr == nullptr) {
-        output.data = input.data; // Directly copies the raw data
+        output.data = input.data;  // Directly copies the raw data
     }
 
     std::vector<int64_t> target_dims = parse_target_shape(shape);
@@ -58,12 +60,10 @@ Tensor run_reshape(const Tensor& input, const Tensor& shape) {
             int64_t dim = (i < input.shape.size()) ? input.shape[i] : 1;
             output.shape.push_back(dim);
             known_product *= dim;
-        } 
-        else if (target_dim == -1) {
+        } else if (target_dim == -1) {
             minus_one_index = static_cast<int>(i);
             output.shape.push_back(-1);
-        } 
-        else {
+        } else {
             output.shape.push_back(target_dim);
             known_product *= target_dim;
         }
@@ -74,18 +74,41 @@ Tensor run_reshape(const Tensor& input, const Tensor& shape) {
         output.shape[minus_one_index] = total_elements / known_product;
     }
     auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start);
-    std::cout<<"Duration :"<<duration.count()<<" us\n";
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "Duration :" << duration.count() << " us\n";
 
     return output;
 }
 
-Tensor run_transpose(const Tensor& input,  const std::vector<int64_t>& perm){
+void ReshapeOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                              const std::vector<const uint8_t*>& weight_ptr,
+                              const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    // If input and output are not the same buffer, copy memory
+    if (in_ptr != out_ptr) {
+        std::memcpy(out_ptr, in_ptr, count * sizeof(float));
+    }
+}
+
+void FlattenOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                              const std::vector<const uint8_t*>& weight_ptr,
+                              const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    if (in_ptr != out_ptr) {
+        std::memcpy(out_ptr, in_ptr, count * sizeof(float));
+    }
+}
+
+Tensor run_transpose(const Tensor& input, const std::vector<int64_t>& perm) {
     auto start = std::chrono::high_resolution_clock::now();
     Tensor output;
-    int64_t A,B,C,D,p0,p1,p2,p3;
+    int64_t A, B, C, D, p0, p1, p2, p3;
     p0 = perm[0];
-    p1 = perm[1]; 
+    p1 = perm[1];
     p2 = perm[2];
     p3 = perm[3];
     A = input.shape[0];
@@ -96,12 +119,12 @@ Tensor run_transpose(const Tensor& input,  const std::vector<int64_t>& perm){
     output.data.resize(output.byte_size());
     const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
     float* out_ptr = reinterpret_cast<float*>(output.data.data());
-    for(int i=0; i<A; ++i){
-        for(int j=0; j<B; ++j){
-            for(int k=0; k<C; ++k){
-                for(int l=0; l<D; ++l){
-                    int64_t in_idx = (i*B*C*D) + (j*C*D) + (k*D) + l;
-                    int64_t cord[4] = {i,j,k,l};
+    for (int i = 0; i < A; ++i) {
+        for (int j = 0; j < B; ++j) {
+            for (int k = 0; k < C; ++k) {
+                for (int l = 0; l < D; ++l) {
+                    int64_t in_idx = (i * B * C * D) + (j * C * D) + (k * D) + l;
+                    int64_t cord[4] = {i, j, k, l};
                     int64_t out_i = cord[p0];
                     int64_t out_j = cord[p1];
                     int64_t out_k = cord[p2];
@@ -109,20 +132,52 @@ Tensor run_transpose(const Tensor& input,  const std::vector<int64_t>& perm){
                     int64_t out_dim1 = output.shape[1];
                     int64_t out_dim2 = output.shape[2];
                     int64_t out_dim3 = output.shape[3];
-                    int64_t out_idx = (out_i*out_dim1 + out_j)*(out_dim2)*(out_dim3) + (out_k*out_dim3) + out_l;
+                    int64_t out_idx = (out_i * out_dim1 + out_j) * (out_dim2) * (out_dim3) +
+                                      (out_k * out_dim3) + out_l;
                     out_ptr[out_idx] = in_ptr[in_idx];
                 }
             }
         }
     }
     auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start);
-    std::cout<<"Duration :"<<duration.count()<<" us\n";
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "Duration :" << duration.count() << " us\n";
 
     return output;
 }
+void TransposeOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                                const std::vector<const uint8_t*>& weight_ptr,
+                                const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
 
-Tensor run_add(const Tensor& a, const Tensor& b){
+    int64_t p0 = perm[0], p1 = perm[1], p2 = perm[2], p3 = perm[3];
+    int64_t A = input_shape[0], B = input_shape[1], C = input_shape[2], D = input_shape[3];
+
+    int64_t out_dim1 = input_shape[p1];
+    int64_t out_dim2 = input_shape[p2];
+    int64_t out_dim3 = input_shape[p3];
+
+    for (int64_t i = 0; i < A; ++i) {
+        for (int64_t j = 0; j < B; ++j) {
+            for (int64_t k = 0; k < C; ++k) {
+                for (int64_t l = 0; l < D; ++l) {
+                    int64_t in_idx = (i * B * C * D) + (j * C * D) + (k * D) + l;
+                    int64_t cord[4] = {i, j, k, l};
+                    int64_t out_i = cord[p0];
+                    int64_t out_j = cord[p1];
+                    int64_t out_k = cord[p2];
+                    int64_t out_l = cord[p3];
+
+                    int64_t out_idx = (out_i * out_dim1 + out_j) * out_dim2 * out_dim3 +
+                                      (out_k * out_dim3) + out_l;
+                    out_ptr[out_idx] = in_ptr[in_idx];
+                }
+            }
+        }
+    }
+}
+Tensor run_add(const Tensor& a, const Tensor& b) {
     auto start = std::chrono::high_resolution_clock::now();
     const Tensor& big = (a.size() >= b.size()) ? a : b;
     const Tensor& small = (a.size() >= b.size()) ? b : a;
@@ -131,18 +186,28 @@ Tensor run_add(const Tensor& a, const Tensor& b){
     output.data.resize(big.byte_size());
     const float* big_ptr = reinterpret_cast<const float*>(big.raw_data());
     const float* small_ptr = reinterpret_cast<const float*>(small.raw_data());
-    float* out_ptr = reinterpret_cast<float *>(output.data.data());
-    for(size_t i = 0 ; i < big.size() ; ++i){
-        out_ptr[i] = big_ptr[i] + small_ptr[i%small.size()];
+    float* out_ptr = reinterpret_cast<float*>(output.data.data());
+    for (size_t i = 0; i < big.size(); ++i) {
+        out_ptr[i] = big_ptr[i] + small_ptr[i % small.size()];
     }
     auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start);
-    std::cout<<"Duration :"<<duration.count()<<" us\n";
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "Duration :" << duration.count() << " us\n";
     return output;
-
 }
 
-Tensor run_pad(const Tensor& input, const std::vector<int64_t> &pads, float constant_val){
+void ADDOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                          const std::vector<const uint8_t*>& weight_ptr,
+                          const std::vector<size_t>& output_offset) {
+    const float* big = reinterpret_cast<const float*>(arena + input_offset[0]);
+    const float* small = reinterpret_cast<const float*>(arena + input_offset[1]);
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+    for (int64_t i = 0; i < big_count; ++i) {
+        out_ptr[i] = big[i] + small[i % small_count];
+    }
+}
+
+Tensor run_pad(const Tensor& input, const std::vector<int64_t>& pads, float constant_val) {
     auto start = std::chrono::high_resolution_clock::now();
     int64_t num, channels, height, width;
     num = input.shape[0];
@@ -155,65 +220,138 @@ Tensor run_pad(const Tensor& input, const std::vector<int64_t> &pads, float cons
     pad_wl = pads[3];
     pad_wr = pads[7];
     Tensor output;
-    output.shape = {num,channels,height+pad_ht+pad_hb,width+pad_wl+pad_wr};
+    output.shape = {num, channels, height + pad_ht + pad_hb, width + pad_wl + pad_wr};
     output.data.resize(output.byte_size());
-    float *out_ptr = reinterpret_cast<float *>(output.data.data());
-    const float *in_ptr = reinterpret_cast<const float*>(input.raw_data());
-    std::fill(out_ptr, out_ptr+output.size(), constant_val);
-    for(int64_t n = 0; n < num ; ++n){
-        for(int64_t c = 0; c < channels; ++c){
-            for(int64_t h = 0 ; h < height; ++h){
-                for(int64_t w = 0; w < width; ++w){
-                    int64_t in_idx = (n*channels*height* width) + (c*height*width) + ( h*width) + w;
+    float* out_ptr = reinterpret_cast<float*>(output.data.data());
+    const float* in_ptr = reinterpret_cast<const float*>(input.raw_data());
+    std::fill(out_ptr, out_ptr + output.size(), constant_val);
+    for (int64_t n = 0; n < num; ++n) {
+        for (int64_t c = 0; c < channels; ++c) {
+            for (int64_t h = 0; h < height; ++h) {
+                for (int64_t w = 0; w < width; ++w) {
+                    int64_t in_idx =
+                        (n * channels * height * width) + (c * height * width) + (h * width) + w;
                     int64_t H_out = height + pad_ht + pad_hb;
                     int64_t W_out = width + pad_wl + pad_wr;
-                    int64_t out_idx = (n * channels * H_out * W_out) + (c * H_out * W_out) + ((h + pad_ht) * W_out) + (w + pad_wl);
+                    int64_t out_idx = (n * channels * H_out * W_out) + (c * H_out * W_out) +
+                                      ((h + pad_ht) * W_out) + (w + pad_wl);
                     out_ptr[out_idx] = in_ptr[in_idx];
                 }
             }
         }
     }
     auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start);
-    std::cout<<"Duration :"<<duration.count()<<" us\n";
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "Duration :" << duration.count() << " us\n";
     return output;
-
 }
 
-Tensor run_concat(const std::vector<Tensor> &inputs, int64_t axis){
+void PadOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                          const std::vector<const uint8_t*>& weight_ptr,
+                          const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    int64_t num = in_shape[0], channels = in_shape[1];
+    int64_t height = in_shape[2], width = in_shape[3];
+
+    int64_t pad_ht = pads[2], pad_hb = pads[6];
+    int64_t pad_wl = pads[3], pad_wr = pads[7];
+
+    int64_t H_out = height + pad_ht + pad_hb;
+    int64_t W_out = width + pad_wl + pad_wr;
+    int64_t out_total = num * channels * H_out * W_out;
+
+    std::fill(out_ptr, out_ptr + out_total, constant_val);
+
+    for (int64_t n = 0; n < num; ++n) {
+        for (int64_t c = 0; c < channels; ++c) {
+            for (int64_t h = 0; h < height; ++h) {
+                for (int64_t w = 0; w < width; ++w) {
+                    int64_t in_idx =
+                        (n * channels * height * width) + (c * height * width) + (h * width) + w;
+                    int64_t out_idx = (n * channels * H_out * W_out) + (c * H_out * W_out) +
+                                      ((h + pad_ht) * W_out) + (w + pad_wl);
+                    out_ptr[out_idx] = in_ptr[in_idx];
+                }
+            }
+        }
+    }
+}
+
+Tensor run_concat(const std::vector<Tensor>& inputs, int64_t axis) {
     auto start = std::chrono::high_resolution_clock::now();
     int64_t rank = static_cast<int64_t>(inputs[0].shape.size());
-    if(axis < 0){
+    if (axis < 0) {
         axis += rank;
     }
     Tensor output = inputs[0];
     int64_t total_axis_dim = 0;
-    for( const auto &t : inputs){
+    for (const auto& t : inputs) {
         total_axis_dim += t.shape[axis];
     }
     output.shape[axis] = total_axis_dim;
     output.data.resize(output.byte_size());
     int64_t outer_size = 1;
-    for(int i = 0 ; i < axis ; ++i){
+    for (int i = 0; i < axis; ++i) {
         outer_size *= inputs[0].shape[i];
     }
     int64_t inner_size = 1;
-    for(size_t i = axis + 1; i < inputs[0].shape.size(); ++i){
+    for (size_t i = axis + 1; i < inputs[0].shape.size(); ++i) {
         inner_size *= inputs[0].shape[i];
     }
-    float *out_ptr = reinterpret_cast<float*>(output.data.data());
+    float* out_ptr = reinterpret_cast<float*>(output.data.data());
     int64_t out_axis_shride = total_axis_dim * inner_size;
-    for(int64_t os = 0 ; os < outer_size ; ++os){
+    for (int64_t os = 0; os < outer_size; ++os) {
         int64_t current_axis_offset = 0;
-        for(const auto &t: inputs){
-            const float* in_ptr = reinterpret_cast<const float *>(t.raw_data());
-            int64_t copy_els = t.shape[axis]*inner_size;
-            std::memcpy(out_ptr + (os*out_axis_shride) + current_axis_offset, in_ptr + (os*copy_els), copy_els*sizeof(float));
+        for (const auto& t : inputs) {
+            const float* in_ptr = reinterpret_cast<const float*>(t.raw_data());
+            int64_t copy_els = t.shape[axis] * inner_size;
+            std::memcpy(out_ptr + (os * out_axis_shride) + current_axis_offset,
+                        in_ptr + (os * copy_els), copy_els * sizeof(float));
             current_axis_offset += copy_els;
         }
     }
     auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start);
-    std::cout<<"Duration :"<<duration.count()<<" us\n";
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "Duration :" << duration.count() << " us\n";
     return output;
+}
+
+void ConcatOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                             const std::vector<const uint8_t*>& weight_ptr,
+                             const std::vector<size_t>& output_offset) {
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    int64_t rank = static_cast<int64_t>(input_shapes[0].size());
+    int64_t ax = axis < 0 ? axis + rank : axis;
+
+    int64_t total_axis_dim = 0;
+    for (const auto& s : input_shapes) {
+        total_axis_dim += s[ax];
+    }
+
+    int64_t outer_size = 1;
+    for (int i = 0; i < ax; ++i) {
+        outer_size *= input_shapes[0][i];
+    }
+
+    int64_t inner_size = 1;
+    for (size_t i = ax + 1; i < input_shapes[0].size(); ++i) {
+        inner_size *= input_shapes[0][i];
+    }
+
+    int64_t out_axis_stride = total_axis_dim * inner_size;
+
+    for (int64_t os = 0; os < outer_size; ++os) {
+        int64_t current_axis_offset = 0;
+        for (size_t t = 0; t < input_shapes.size(); ++t) {
+            const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[t]);
+            int64_t copy_els = input_shapes[t][ax] * inner_size;
+
+            std::memcpy(out_ptr + (os * out_axis_stride) + current_axis_offset,
+                        in_ptr + (os * copy_els), copy_els * sizeof(float));
+            current_axis_offset += copy_els;
+        }
+    }
 }
