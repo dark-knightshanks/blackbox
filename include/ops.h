@@ -169,6 +169,69 @@ public:
     const std::string& name() const override { return op_name; }
 };
 
+class Conv2DOperator : public Operator {
+private:
+    int64_t N, C, H, W;
+    int64_t C_out, Kh, Kw;
+    int64_t Sh, Sw, Ph, Pw;
+    int64_t H_out, W_out;
+    bool has_bias;
+    std::string op_name = "Conv2D";
+
+public:
+    Conv2DOperator(int64_t N, int64_t C, int64_t H, int64_t W, int64_t C_out, int64_t Kh,
+                   int64_t Kw, int64_t Sh, int64_t Sw, int64_t Ph, int64_t Pw,
+                   bool has_bias = false)
+        : N(N), C(C), H(H), W(W), C_out(C_out), Kh(Kh), Kw(Kw), Sh(Sh), Sw(Sw), Ph(Ph), Pw(Pw),
+          has_bias(has_bias) {
+        H_out = (H + 2 * Ph - Kh) / Sh + 1;
+        W_out = (W + 2 * Pw - Kw) / Sw + 1;
+    }
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
+class MaxPool2DOperator : public Operator {
+private:
+    int64_t N, C, H, W;
+    int64_t Kh, Kw;
+    int64_t Sh, Sw, Ph, Pw;
+    int64_t H_out, W_out;
+    std::string op_name = "MaxPool2D";
+
+public:
+    MaxPool2DOperator(int64_t N, int64_t C, int64_t H, int64_t W, int64_t Kh, int64_t Kw,
+                      int64_t Sh, int64_t Sw, int64_t Ph, int64_t Pw)
+        : N(N), C(C), H(H), W(W), Kh(Kh), Kw(Kw), Sh(Sh), Sw(Sw), Ph(Ph), Pw(Pw) {
+        H_out = (H + 2 * Ph - Kh) / Sh + 1;
+        W_out = (W + 2 * Pw - Kw) / Sw + 1;
+    }
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
+class GlobalAvgPoolOperator : public Operator {
+private:
+    int64_t num, channels, height, width;
+    std::string op_name = "GlobalAveragePool";
+
+public:
+    GlobalAvgPoolOperator(int64_t num, int64_t channels, int64_t height, int64_t width)
+        : num(num), channels(channels), height(height), width(width) {}
+
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
 constexpr double PI = 3.14159265358979323846;
 Tensor run_relu(const Tensor& input);
 Tensor run_GELU(const Tensor& input);

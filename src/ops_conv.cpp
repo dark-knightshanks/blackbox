@@ -69,6 +69,37 @@ Tensor run_maxpool2D(const Tensor& input, const std::vector<int64_t>& kernel,
     return output;
 }
 
+void MaxPoolOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                              const std::vector<const uint8_t*>& weight_ptr,
+                              const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    for (int64_t n = 0; n < N; ++n) {
+        for (int64_t c = 0; c < C; ++c) {
+            for (int64_t h = 0; h < H_out; ++h) {
+                for (int64_t w = 0; w < W_out; ++w) {
+                    float max_val = -1e9f;
+                    for (int64_t kh = 0; kh < Kh; ++kh) {
+                        for (int64_t kw = 0; kw < Kw; ++kw) {
+                            int64_t ih = (h * Sh) + kh - Ph;
+                            int64_t iw = (w * Sw) + kw - Pw;
+
+                            if (ih >= 0 && ih < H && iw >= 0 && iw < W) {
+                                int64_t in_idx = (n * C * H * W) + (c * H * W) + (ih * W) + iw;
+                                max_val = std::max(max_val, in_ptr[in_idx]);
+                            }
+                        }
+                    }
+                    int64_t out_idx =
+                        (n * C * H_out * W_out) + (c * H_out * W_out) + (h * W_out) + w;
+                    out_ptr[out_idx] = max_val;
+                }
+            }
+        }
+    }
+}
+
 Tensor run_conv2D(const Tensor& input, const Tensor& weights, const Tensor& bias,
                   const std::vector<int64_t>& strides, const std::vector<int64_t>& pads) {
     auto start = std::chrono::high_resolution_clock::now();
@@ -167,6 +198,77 @@ Tensor run_conv2D(const Tensor& input, const Tensor& weights, const Tensor& bias
     return output;
 }
 
+void Conv2DOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                             const std::vector<const uint8_t*>& weight_ptr,
+                             const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    const float* w_ptr = reinterpret_cast<const float*>(weight_ptr[0]);
+    const float* bias_ptr = has_bias ? reinterpret_cast<const float*>(weight_ptr[1]) : nullptr;
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    for (int64_t n = 0; n < N; ++n) {
+        for (int64_t oc = 0; oc < C_out; ++oc) {
+            for (int64_t h = 0; h < H_out; ++h) {
+                for (int64_t w = 0; w < W_out; ++w) {
+                    float sum = 0.0f;
+                    for (int64_t c = 0; c < C; ++c) {
+                        for (int64_t kh = 0; kh < Kh; ++kh) {
+                            for (int64_t kw = 0; kw < Kw; ++kw) {
+                                int64_t ih = (h * Sh) + kh - Ph;
+                                int64_t iw = (w * Sw) + kw - Pw;
+
+                                if (ih >= 0 && ih < H && iw >= 0 && iw < W) {
+                                    int64_t in_idx = (n * C * H * W) + (c * H * W) + (ih * W) + iw;
+                                    int64_t w_idx =
+                                        (oc * C * Kh * Kw) + (c * Kh * Kw) + (kh * Kw) + kw;
+                                    sum += in_ptr[in_idx] * w_ptr[w_idx];
+                                }
+                            }
+                        }
+                    }
+                    if (has_bias) {
+                        sum += bias_ptr[oc];
+                    }
+                    int64_t out_idx =
+                        (n * C_out * H_out * W_out) + (oc * H_out * W_out) + (h * W_out) + w;
+                    out_ptr[out_idx] = sum;
+                }
+            }
+        }
+    }
+}
+
+void MaxPool2DOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                               const std::vector<const uint8_t*>& weight_ptr,
+                               const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+
+    for (int64_t n = 0; n < N; ++n) {
+        for (int64_t c = 0; c < C; ++c) {
+            for (int64_t h = 0; h < H_out; ++h) {
+                for (int64_t w = 0; w < W_out; ++w) {
+                    float max_val = -1e9f;
+                    for (int64_t kh = 0; kh < Kh; ++kh) {
+                        for (int64_t kw = 0; kw < Kw; ++kw) {
+                            int64_t ih = (h * Sh) + kh - Ph;
+                            int64_t iw = (w * Sw) + kw - Pw;
+
+                            if (ih >= 0 && ih < H && iw >= 0 && iw < W) {
+                                int64_t in_idx = (n * C * H * W) + (c * H * W) + (ih * W) + iw;
+                                max_val = std::max(max_val, in_ptr[in_idx]);
+                            }
+                        }
+                    }
+                    int64_t out_idx =
+                        (n * C * H_out * W_out) + (c * H_out * W_out) + (h * W_out) + w;
+                    out_ptr[out_idx] = max_val;
+                }
+            }
+        }
+    }
+}
+
 Tensor run_globalAvgPool(const Tensor& input) {
     auto start = std::chrono::high_resolution_clock::now();
     Tensor output;
@@ -197,4 +299,23 @@ Tensor run_globalAvgPool(const Tensor& input) {
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     std::cout << "Duration: " << duration << " us\n";
     return output;
+}
+
+void GlobalAvgPoolOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                                    const std::vector<const uint8_t*>& weight_ptr,
+                                    const std::vector<size_t>& output_offset) {
+    const float* in_ptr = reinterpret_cast<const float*>(arena + input_offset[0]);
+    float* out_ptr = reinterpret_cast<float*>(arena + output_offset[0]);
+    float spatial_size = static_cast<float>(height * width);
+
+    for (int64_t n = 0; n < num; ++n) {
+        for (int64_t c = 0; c < channels; ++c) {
+            float sum = 0.0f;
+            int64_t offset = (n * channels + c) * height * width;
+            for (int64_t hw = 0; hw < height * width; ++hw) {
+                sum += in_ptr[offset + hw];
+            }
+            out_ptr[n * channels + c] = sum / spatial_size;
+        }
+    }
 }
