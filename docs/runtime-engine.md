@@ -1,25 +1,47 @@
 # Runtime Engine
 
-The `src/engine.cpp` file contains the core runtime engine functions for parsing ONNX models, memory-mapping external weights, and executing the computational graph.
+`blackbox` uses a two-stage, zero-malloc execution pipeline inspired by production inference runtimes.
 
-### Core Functions & State:
+---
 
-```cpp
-const uint8_t* get_mmap_buffer(const std::string& filepath);
-```
-* ***get_mmap_buffer*** - Opens the external binary weight file (e.g. `model.onnx.data`), queries its size with `fstat`, and maps it directly into the process virtual address space via POSIX `mmap()` (`PROT_READ`, `MAP_SHARED`). Caches open file pointers in a static hash map (`mmap_cache`) so each binary file is mapped exactly once with zero heap RAM duplication.
+## 1. How It Works
 
-```cpp
-void loadinitializer(const onnx::GraphProto& graph);
-```
-* ***loadinitializer*** - Loads model weights from `.onnx` and memory-mapped external files into the global `weight` registry. If data is stored externally, it assigns a non-owning pointer `tensor.external_ptr = base + offset` directly into the mapped virtual address space.
+1. **Compilation Phase (`build_execution_graph`)**:
+   - Parses the ONNX model graph once at startup.
+   - Calculates intermediate tensor shapes and assigns fixed byte offsets into a single memory arena.
+   - Reuses memory in-place for elementwise operations (`ReLU`, `BatchNorm`).
+   - Packages operations into an ordered sequence of steps.
 
-```cpp
-std::unordered_map<std::string, Tensor> weight;
-```
-* Note: The `loadinitializer` function stores all parsed weights into this global hash map, allowing `run_inference` to quickly look them up by their string names.
+2. **Execution Phase (`ExecutionGraph::run`)**:
+   - Copies the input image to offset `0` of the pre-allocated arena.
+   - Sequentially invokes each operator's `forward()` method using raw pointers into the arena and memory-mapped weights.
+   - Copies the final classification logits out of the arena.
+   - **Zero heap allocations (`malloc`/`free`) occur during inference.**
 
-```cpp
-Tensor run_inference(const onnx::GraphProto& graph, const Tensor& input_image);
-```
-* ***run_inference*** - Traverses each node in the computational graph in topological order and dynamically dispatches to the corresponding mathematical operation functions (like `run_conv2D`, `run_gemm`, `run_relu`, `run_reshape`).
+---
+
+## 2. Core Components
+
+### `MemoryArena` (`include/arena.h`)
+- A single contiguous memory block allocated with 64-byte alignment via `aligned_alloc` for AVX2/AVX-512 vector operations and cache-line efficiency.
+- Hands out memory via fast bump-pointer arithmetic: `(offset + 63) & ~63`.
+- Resets in $O(1)$ between inference passes without deallocating.
+- Supports move semantics (`&&`) for zero-copy ownership transfer.
+
+### `Operator` (`include/ops.h`)
+- Abstract base class for all compute kernels:
+  ```cpp
+  virtual void forward(uint8_t* arena,
+                       const std::vector<size_t>& in_offsets,
+                       const std::vector<const uint8_t*>& weight_ptrs,
+                       const std::vector<size_t>& out_offsets) = 0;
+  ```
+- Separates memory management from mathematical compute. Activations reside in the arena; static weights reside in zero-copy memory-mapped storage.
+
+### `ExecutionGraph` (`include/execution.h`)
+- Holds the pre-allocated `MemoryArena` and the planned `ExecutionStep` list.
+- Contains the generic forward loop and real-time microsecond-level kernel profiling via `std::chrono`.
+
+### Memory-Mapped Weights (`src/engine.cpp`)
+- Maps external `.onnx.data` binary weight files directly into process virtual memory using POSIX `mmap()` (`PROT_READ`, `MAP_SHARED`).
+- Avoids duplicating model weights in heap RAM.

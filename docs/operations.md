@@ -1,65 +1,77 @@
-# Mathematical Operations
+# Mathematical Operations & OOP Operator Library
 
-The operator library in `src/` contains mathematical and tensor manipulation functions partitioned into modular domains:
-
-### 1. Convolution & Pooling (`src/ops_conv.cpp`)
+The operator library in `blackbox` is structured around an abstract, polymorphic `Operator` base class (`include/ops.h`), with zero-allocation kernels partitioned into modular domain files across `src/`:
 
 ```cpp
-Tensor run_conv2D(const Tensor& input, const Tensor& weights, const Tensor& bias, const std::vector<int64_t>& strides, const std::vector<int64_t>& pads);
+class Operator {
+public:
+    virtual ~Operator() = default;
+    virtual void forward(uint8_t* arena,
+                         const std::vector<size_t>& input_offset,
+                         const std::vector<const uint8_t*>& weight_ptr,
+                         const std::vector<size_t>& output_offset) = 0;
+    virtual const std::string& name() const = 0;
+};
 ```
-* ***run_conv2D*** - Performs 4D spatial convolution (`[N, C, H, W]`), handling asymmetric padding and strides, with zero-copy memory-mapped weights and optional bias addition.
-
-```cpp
-Tensor run_maxpool2D(const Tensor& input, const std::vector<int64_t>& kernel, const std::vector<int64_t>& strides, const std::vector<int64_t>& pads);
-```
-* ***run_maxpool2D*** - Applies a 2D max pooling filter over spatial dimensions.
 
 ---
 
-### 2. Activations (`src/ops_activations.cpp`)
+## 1. Convolution & Spatial Pooling (`src/ops_conv.cpp`)
 
-```cpp
-Tensor run_relu(const Tensor& input);
-Tensor run_GELU(const Tensor& input);
-Tensor run_SilU(const Tensor& input);
-Tensor run_softmax(const Tensor& input, int64_t axis);
-```
-* ***run_relu*** - Rectified Linear Unit activation (`max(0, x)`).
-* ***run_GELU*** - Gaussian Error Linear Unit using the tanh approximation.
-* ***run_SilU*** - Sigmoid Linear Unit ($x \cdot \sigma(x)$), used in modern LLMs and vision backbones.
-* ***run_softmax*** - Numerically stable 3-pass softmax along a specified axis.
+* **`Conv2DOperator`**:
+  * Implements 4D spatial convolution (`[N, C, H, W]`).
+  * Supports asymmetric padding, variable strides, and optional bias addition.
+  * Direct pointer access into the Arena with zero-copy mmap filter weights.
+* **`MaxPool2DOperator`**:
+  * 2D spatial window max pooling. Pre-computes output height and width at instantiation.
+* **`GlobalAvgPoolOperator`**:
+  * Averages each spatial feature slice ($H \times W$) into $1 \times 1$ per channel.
 
 ---
 
-### 3. Normalization (`src/ops_norm.cpp`)
+## 2. Activation Functions (`src/ops_activations.cpp`)
 
-```cpp
-Tensor run_layernorm(Tensor& input, const Tensor& weights, const Tensor& bias);
-Tensor run_rmsnorm(const Tensor& input, const Tensor& weights);
-```
-* ***run_layernorm*** - Layer Normalization (mean subtraction + variance normalization + affine scale/bias).
-* ***run_rmsnorm*** - Root Mean Square Normalization without mean tracking, used in LLaMA-style models.
-
----
-
-### 4. Linear & Matrix Multiplication (`src/ops_matmul.cpp`)
-
-```cpp
-Tensor run_gemm(const Tensor& input, const Tensor& weights, const Tensor& bias, int transB);
-Tensor run_matmul(const Tensor& A, const Tensor& B);
-```
-* ***run_gemm*** - General Matrix Multiplication for 2D linear/dense layers with `transB` support.
-* ***run_matmul*** - 4D Batched Matrix Multiplication ($[B, H, M, K] \times [B, H, K, N] \to [B, H, M, N]$) with batch and head broadcasting.
+* **`RELUOperator`**:
+  * Rectified Linear Unit activation ($\max(0, x)$). Supports in-place execution (`in_offset == out_offset`).
+* **`GELUOperator`**:
+  * Gaussian Error Linear Unit with tanh approximation ($0.5x(1 + \tanh(\sqrt{2/\pi}(x + 0.044715x^3)))$), used in Vision Transformers and BERT.
+* **`SILUOperator`**:
+  * Sigmoid Linear Unit ($x \cdot \sigma(x)$), standard in modern vision backbones and LLMs.
+* **`SoftmaxOperator`**:
+  * Numerically stable 3-pass softmax ($\max$ subtraction, exponentiation + accumulation, normalization) along an arbitrary axis.
 
 ---
 
-### 5. Shape Operations (`src/ops_shape.cpp`)
+## 3. Normalization (`src/ops_norm.cpp`)
 
-```cpp
-Tensor run_reshape(const Tensor& input, const Tensor& shape);
-Tensor run_transpose(const Tensor& input, const std::vector<int64_t>& perm);
-int argmax(const Tensor& output);
-```
-* ***run_reshape*** - Zero-copy pointer view reshape supporting inferred `-1` dimensions and 64-bit ONNX target shape tensors.
-* ***run_transpose*** - 4D dimension permutation.
-* ***argmax*** - Returns the index of the highest score for classification.
+* **`BatchNormOperator`**:
+  * Normalizes across spatial pixels ($H \times W$) per channel using 4 pre-trained mmap vectors: scale ($\gamma$), shift ($\beta$), mean ($\mu$), and variance ($\sigma^2$).
+  * Supports in-place memory reuse.
+* **`LayerNormOperator`**:
+  * Normalizes across the hidden dimension (`dims`) per token/patch for Transformers (ViT).
+* **`RMSNormOperator`**:
+  * Root Mean Square Normalization without mean centering, used in modern LLMs (LLaMA).
+
+---
+
+## 4. Matrix Multiplication & Linear (`src/ops_matmul.cpp`)
+
+* **`GemmOperator`**:
+  * General Matrix Multiply for 2D classification heads and linear layers: $Y = X \cdot W^T + b$ (`transB = 1` supported).
+* **`MatMulOperator`**:
+  * 4D Batched Matrix Multiplication ($[B, \text{heads}, M, K] \times [B, \text{heads}, K, N]$) with broadcasting across batch and head dimensions, powering Multi-Head Attention.
+
+---
+
+## 5. Shape Operations (`src/ops_shape.cpp`)
+
+* **`ADDOperator`**:
+  * Elementwise addition and broadcasting addition, powering ResNet residual skip connections and Transformer positional embedding additions.
+* **`ReshapeOperator` / `FlattenOperator`**:
+  * Zero-cost shape reinterpretation. If `in_offset == out_offset`, operates as a true zero-overhead no-op.
+* **`TransposeOperator`**:
+  * Permutes 4D dimension order (e.g. $[0, 2, 1, 3]$ for attention head transformations or NCHW $\to$ NHWC).
+* **`ConcatOperator`**:
+  * Concatenates multiple tensors along an arbitrary axis using fast `std::memcpy` blocks.
+* **`PadOperator`**:
+  * Padds spatial borders with constant values.
