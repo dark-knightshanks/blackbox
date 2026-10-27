@@ -4,6 +4,7 @@
 #include "ops.h"
 #include <chrono>
 #include <numeric>
+#include <immintrin.h>
 
 Tensor run_maxpool2D(const Tensor& input, const std::vector<int64_t>& kernel,
                      const std::vector<int64_t>& strides, const std::vector<int64_t>& pads) {
@@ -205,6 +206,119 @@ void Conv2DOperator::forward(uint8_t* arena, const std::vector<size_t>& input_of
             }
         }
     }
+}
+
+void Conv2D_X86Operator::transpose_NCHW_to_NHWC(float* src, float* dst,
+                                                const std::vector<size_t>& in_offset,
+                                                std::vector<int64_t> perm) {
+    const float* in_ptr = (src + (in_offset[0] / sizeof(float)));
+    float* out_ptr = (dst);
+
+    int64_t p0 = perm[0], p1 = perm[1], p2 = perm[2], p3 = perm[3];
+    int64_t A = input_shape[0], B = input_shape[1], C = input_shape[2], D = input_shape[3];
+
+    int64_t out_dim1 = input_shape[p1];
+    int64_t out_dim2 = input_shape[p2];
+    int64_t out_dim3 = input_shape[p3];
+
+    for (int64_t i = 0; i < A; ++i) {
+        for (int64_t j = 0; j < B; ++j) {
+            for (int64_t k = 0; k < C; ++k) {
+                for (int64_t l = 0; l < D; ++l) {
+                    int64_t in_idx = (i * B * C * D) + (j * C * D) + (k * D) + l;
+                    int64_t cord[4] = {i, j, k, l};
+                    int64_t out_i = cord[p0];
+                    int64_t out_j = cord[p1];
+                    int64_t out_k = cord[p2];
+                    int64_t out_l = cord[p3];
+
+                    int64_t out_idx = (out_i * out_dim1 + out_j) * out_dim2 * out_dim3 +
+                                      (out_k * out_dim3) + out_l;
+                    out_ptr[out_idx] = in_ptr[in_idx];
+                }
+            }
+        }
+    }
+}
+
+void Conv2D_X86Operator::transpose_NHWC_to_NCHW(float* src, float* dst,
+                                                const std::vector<size_t>& out_offset,
+                                                std::vector<int64_t> perm) {
+    const float* in_ptr = (src);
+    float* out_ptr = (dst + (out_offset[0] / sizeof(float)));
+
+    int64_t p0 = perm[0], p1 = perm[1], p2 = perm[2], p3 = perm[3];
+    int64_t A = N, B = H_out, C = W_out, D = C_out;
+    std::vector<int64_t> shape = {A, B, C, D};
+
+    int64_t out_dim1 = shape[p1];
+    int64_t out_dim2 = shape[p2];
+    int64_t out_dim3 = shape[p3];
+
+    for (int64_t i = 0; i < A; ++i) {
+        for (int64_t j = 0; j < B; ++j) {
+            for (int64_t k = 0; k < C; ++k) {
+                for (int64_t l = 0; l < D; ++l) {
+                    int64_t in_idx = (i * B * C * D) + (j * C * D) + (k * D) + l;
+                    int64_t cord[4] = {i, j, k, l};
+                    int64_t out_i = cord[p0];
+                    int64_t out_j = cord[p1];
+                    int64_t out_k = cord[p2];
+                    int64_t out_l = cord[p3];
+
+                    int64_t out_idx = (out_i * out_dim1 + out_j) * out_dim2 * out_dim3 +
+                                      (out_k * out_dim3) + out_l;
+                    out_ptr[out_idx] = in_ptr[in_idx];
+                }
+            }
+        }
+    }
+}
+
+void Conv2D_X86Operator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                                 const std::vector<const uint8_t*>& weight_ptr,
+                                 const std::vector<size_t>& output_offset) {
+
+    std::vector<float> nhwc_in(N * H * W * C);
+    std::vector<float> nchw_out(N * H_out * W_out * C_out);
+    std::vector<int64_t> perm_in = {0, 2, 3, 1};
+    transpose_NCHW_to_NHWC(reinterpret_cast<float*>(arena), nhwc_in.data(), input_offset, perm_in);
+    const float* w_ptr = reinterpret_cast<const float*>(weight_ptr[0]);
+    const float* bias_ptr = has_bias ? reinterpret_cast<const float*>(weight_ptr[1]) : nullptr;
+
+    for (int64_t n = 0; n < N; ++n) {
+        for (int64_t h = 0; h < H_out; ++h) {
+            for (int64_t w = 0; w < W_out; ++w) {
+                for (int64_t oc = 0; oc < C_out; ++oc) {
+                    float sum = 0.0f;
+                    for (int64_t c = 0; c < C; ++c) {
+                        for (int64_t kh = 0; kh < Kh; ++kh) {
+                            for (int64_t kw = 0; kw < Kw; ++kw) {
+                                int64_t ih = (h * Sh) + kh - Ph;
+                                int64_t iw = (w * Sw) + kw - Pw;
+
+                                if (ih >= 0 && ih < H && iw >= 0 && iw < W) {
+                                    int64_t in_idx = (n * H * W * C) + (ih * W * C) + (iw * C) + c;
+                                    int64_t w_idx =
+                                        (oc * C * Kh * Kw) + (c * Kh * Kw) + (kh * Kw) + kw;
+                                    sum += nhwc_in[in_idx] * w_ptr[w_idx];
+                                }
+                            }
+                        }
+                    }
+                    if (has_bias) {
+                        sum += bias_ptr[oc];
+                    }
+                    int64_t out_idx =
+                        (n * H_out * W_out * C_out) + (h * W_out * C_out) + (w * C_out) + oc;
+                    nchw_out[out_idx] = sum;
+                }
+            }
+        }
+    }
+    std::vector<int64_t> perm_out = {0, 3, 1, 2};
+    transpose_NHWC_to_NCHW(nchw_out.data(), reinterpret_cast<float*>(arena), output_offset,
+                           perm_out);
 }
 
 void MaxPool2DOperator::forward(uint8_t* arena, const std::vector<size_t>& input_offset,
