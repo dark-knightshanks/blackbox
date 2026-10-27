@@ -194,6 +194,37 @@ public:
     const std::string& name() const override { return op_name; }
 };
 
+class Conv2D_X86Operator : public Operator {
+private:
+    int64_t N, C, H, W;
+    int64_t C_out, Kh, Kw;
+    int64_t Sh, Sw, Ph, Pw;
+    int64_t H_out, W_out;
+    bool has_bias;
+    std::vector<int64_t> input_shape;
+    std::string op_name = "Conv2D_X86";
+
+public:
+    Conv2D_X86Operator(int64_t N, int64_t C, int64_t H, int64_t W, int64_t C_out, int64_t Kh,
+                       int64_t Kw, int64_t Sh, int64_t Sw, int64_t Ph, int64_t Pw,
+                       bool has_bias = false)
+        : N(N), C(C), H(H), W(W), C_out(C_out), Kh(Kh), Kw(Kw), Sh(Sh), Sw(Sw), Ph(Ph), Pw(Pw),
+          has_bias(has_bias) {
+        input_shape = {N, C, H, W};
+        H_out = (H + 2 * Ph - Kh) / Sh + 1;
+        W_out = (W + 2 * Pw - Kw) / Sw + 1;
+    }
+    void transpose_NCHW_to_NHWC(float* src, float* dst, const std::vector<size_t>& in_offset,
+                                std::vector<int64_t> perm);
+    void transpose_NHWC_to_NCHW(float* src, float* dst, const std::vector<size_t>& out_offset,
+                                std::vector<int64_t> perm);
+    void forward(uint8_t* arena, const std::vector<size_t>& input_offset,
+                 const std::vector<const uint8_t*>& weight_ptr,
+                 const std::vector<size_t>& output_offset) override;
+
+    const std::string& name() const override { return op_name; }
+};
+
 class MaxPool2DOperator : public Operator {
 private:
     int64_t N, C, H, W;

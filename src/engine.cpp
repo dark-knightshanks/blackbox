@@ -418,8 +418,8 @@ ExecutionGraph build_execution_graph(const onnx::GraphProto& graph,
                 weight_ptrs.push_back(weight[node.input(2)].raw_data());
             }
 
-            auto op = std::make_unique<Conv2DOperator>(N, C, H, W, C_out, Kh, Kw, Sh, Sw, Ph, Pw,
-                                                       has_bias);
+            auto op = std::make_unique<Conv2D_X86Operator>(N, C, H, W, C_out, Kh, Kw, Sh, Sw, Ph,
+                                                           Pw, has_bias);
             ops.push_back(std::move(op));
             plan.push_back(
                 {ops.back().get(), {tensor_offsets[in_name]}, weight_ptrs, {out_offset}});
